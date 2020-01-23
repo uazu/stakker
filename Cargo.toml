@@ -1,0 +1,53 @@
+[package]
+name = "stakker"
+version = "0.0.1"
+authors = ["Jim Peters <jim@uazu.net>"]
+edition = "2018"
+
+description = "A lightweight low-level single-threaded actor runtime"
+license = "MIT/Apache-2.0"
+readme = "README.md"
+
+repository = "https://github.com/uazu/stakker"
+documentation = "https://docs.rs/stakker"
+
+keywords = [ "actor", "runtime", "async", "pony", "erlang" ]
+categories = [ "asynchronous", "concurrency", "data-structures" ]
+
+[badges]
+maintenance = { status = "experimental" }
+
+[dependencies]
+static_assertions = "1.0"
+qcell = "0.4"
+anymap = { version = "0.12", optional = true }
+slab = { version = "0.4", optional = true }
+
+[dev-dependencies]
+once_cell = "1.3"
+
+# For more details on features, see crate docs.  Features are additive
+# in cargo, so summing features must result a less restrictive, more
+# flexible configuration (even if less efficient), or else things will
+# break when different crates using Stakker are combined in a build.
+
+[features]
+default = ["anymap", "inter-thread"]
+
+# Disable all unsafe code and compile with #[forbid(unsafe_code)]
+no-unsafe = []
+
+# Disable the unsafe fast FnOnce queue code
+no-unsafe-queue = []
+
+# Allow Stakker to run in more than one thread at a time
+multi-thread = []
+
+# Allow more than one Stakker to run in each thread
+multi-stakker = []
+
+# Force use of the inline Deferrer
+inline-deferrer = []
+
+# Enable inter-thread operations: Waker, PipedThread
+inter-thread = ["slab"]

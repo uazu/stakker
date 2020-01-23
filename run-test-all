@@ -1,0 +1,3 @@
+#!/bin/bash
+
+./run-all-feature-comb.pl cargo test --no-default-features --features
