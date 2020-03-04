@@ -3,7 +3,7 @@
 This project follows Rust semantic versioning, so any patch release
 before 0.1.0 is allowed to make breaking changes.
 
-[//] # ( see keepachangelog.com for format ideas )
+<!-- see keepachangelog.com for format ideas -->
 
 ## 0.0.2 (2020-03-04)
 
@@ -40,6 +40,6 @@ before 0.1.0 is allowed to make breaking changes.
 
 First public release
 
-[//] # ( Local Variables: )
-[//] # ( mode: text )
-[//] # ( End: )
+<!-- Local Variables: -->
+<!-- mode: markdown -->
+<!-- End: -->
