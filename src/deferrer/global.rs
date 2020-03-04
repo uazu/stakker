@@ -45,21 +45,25 @@ impl DeferrerAux {
         Self(PhantomData)
     }
 
-    pub(crate) fn replace_queue(&mut self, queue: FnOnceQueue<Stakker>) -> FnOnceQueue<Stakker> {
+    pub(crate) fn swap_queue(&self, queue: &mut FnOnceQueue<Stakker>) {
         // Safety: The running thread has exclusive access to QUEUE;
-        // see above
+        // see above.  The operation doesn't call into any method
+        // which might also attempt to access the same global.
         unsafe {
-            mem::replace(&mut QUEUE, Some(queue)).expect("Deferrer queue unexpectedly disappeared")
+            if let Some(ref mut curr) = QUEUE {
+                mem::swap(curr, queue);
+            }
         }
     }
 
     #[inline]
     pub fn defer(&self, f: impl FnOnce(&mut Stakker) + 'static) {
         // Safety: The running thread has exclusive access to QUEUE;
-        // see above
+        // see above.  The operation doesn't call into any method
+        // which might also attempt to access the same global.
         unsafe {
             if let Some(ref mut queue) = QUEUE {
-                queue.push(f)
+                queue.push(f);
             }
         };
     }

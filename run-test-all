@@ -1,3 +1,13 @@
 #!/bin/bash
 
-./run-all-feature-comb.pl cargo test --no-default-features --features
+run() {
+    ./run-all-feature-comb.pl cargo test --no-default-features --features || exit 1
+}
+
+if [ "$1" = "-r" ]
+then
+    # Repeat until failure
+    while :; do run; done
+else
+    run
+fi

@@ -36,23 +36,33 @@ struct QueuesInner<O: Send + Sync + 'static, I: Send + Sync + 'static> {
 /// - If the thread terminates normally or panics, then the underlying
 /// [`Waker`] notifies the main thread and `fwd_term` is called with
 /// the panic error, or `None` if there was no panic.  This handler
-/// can discard the `PipedThread` instance to complete the cleanup,
+/// can discard the [`PipedThread`] instance to complete the cleanup,
 /// and start a new thread if necessary.
 ///
-/// - If the `PipedThread` instance is dropped in the main thread,
+/// - If the [`PipedThread`] instance is dropped in the main thread,
 /// then a **cancel** flag is set which the thread will notice next
 /// time it tries to send or receive data.  The thread should then
-/// terminate.  So if the `PipedThread` instance is kept within the
+/// terminate.  So if the [`PipedThread`] instance is kept within the
 /// same actor that is handling the incoming data, then this takes
 /// care of thread cleanup automatically if the actor fails
 /// unexpectedly.
 ///
+/// [`PipedThread`]: struct.PipedThread.html
 /// [`Waker`]: struct.Waker.html
 pub struct PipedThread<O: Send + Sync + 'static, I: Send + Sync + 'static> {
     queues: Arc<Queues<O, I>>,
 }
 
 impl<O: Send + Sync + 'static, I: Send + Sync + 'static> PipedThread<O, I> {
+    /// Spawn a new thread.  `fwd_recv` will be called for each
+    /// incoming message.  `fwd_term` will be called when the thread
+    /// terminates with the argument of `None` for normal termination,
+    /// or `Some(msg)` for a panic.  The `run` argument is the closure
+    /// that will be run within the new thread.  The [`PipedLink`]
+    /// argument passed to it allows the new thread to send and
+    /// receive messages.
+    ///
+    /// [`PipedLink`]: struct.PipedLink.html
     pub fn spawn(
         core: &mut Core,
         fwd_recv: Fwd<I>,
@@ -70,20 +80,20 @@ impl<O: Send + Sync + 'static, I: Send + Sync + 'static> PipedThread<O, I> {
         });
 
         let qu = queues.clone();
-        let waker = core.waker(move |s, deleted| {
+        let waker = core.waker(move |_, deleted| {
             let mut panic = None;
             let mut lock = qu.mutex.lock().unwrap();
             let recv = mem::replace(&mut lock.recv, Vec::new());
             if deleted {
                 panic = mem::replace(&mut lock.panic, None);
-            };
+            }
             drop(lock);
 
             for msg in recv {
-                fwd_recv.fwd(s, msg);
+                fwd_recv.fwd(msg);
             }
             if deleted {
-                fwd_term.fwd(s, panic);
+                fwd_term.fwd(panic);
             }
         });
 

@@ -2,6 +2,11 @@ use std::alloc::Layout;
 use std::marker::PhantomData;
 use std::mem;
 
+// TODO: There's no point in reallocating and copying.  It would be
+// better to just save a full queue and allocate a new one with double
+// the space, and then when executing throw away all the smaller
+// queues and keep just the biggest for next time.
+
 // This code was liberally adapted from some example code provided by
 // Simon Sapin in the Rust playground related to an RFC and Reddit
 // comments.
@@ -122,10 +127,10 @@ mod hvec {
     impl HVec {
         // If we guess a strict-enough alignment here, we can
         // statically eliminate a check from most calls to `push`
-        const MIN_ALIGN: usize = 16;
+        pub const MIN_ALIGN: usize = 16;
 
         // This just saves some reallocations at the start
-        const MIN_CAPACITY: usize = 1024;
+        pub const MIN_CAPACITY: usize = 1024;
 
         pub const fn new() -> Self {
             Self {
@@ -242,6 +247,9 @@ mod hvec {
 
 #[cfg(test)]
 mod tests {
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
     fn d1(v1: i32) {
         println!("d1: {}", v1);
     }
@@ -297,6 +305,70 @@ mod tests {
 
         queue.execute(&mut ());
     }
+
+    #[repr(align(32))]
+    struct Align32([u32; 8]);
+
+    #[inline(never)]
+    fn accept_align32(c: &mut u32, v: Align32) {
+        (*c) += 0x100;
+        assert_eq!(v.0[0], 123456789);
+    }
+
+    #[inline(never)]
+    fn accept_bigarr(c: &mut u32, v: [u32; 512]) {
+        (*c) += 0x10000;
+        assert_eq!(v[0], 123456789);
+    }
+
+    #[test]
+    fn test_reallocation() {
+        let mut confirm = 0;
+        let mut queue = super::FnOnceQueue::<u32>::new();
+
+        // Force first allocation
+        assert!(queue.is_empty());
+        queue.push(move |c| (*c) += 1);
+        assert!(queue.len() > 0);
+        assert!(!queue.is_empty());
+
+        // Test reallocation with a different alignment
+        let v = Align32([123456789; 8]);
+        queue.push(move |c| accept_align32(c, v));
+        assert!(queue.len() < super::hvec::HVec::MIN_CAPACITY);
+
+        // Test reallocation because exceeded initial capacity
+        let v = [123456789; 512];
+        queue.push(move |c| accept_bigarr(c, v));
+        assert!(queue.len() > super::hvec::HVec::MIN_CAPACITY);
+
+        queue.execute(&mut confirm);
+        assert_eq!(confirm, 0x10101);
+    }
+
+    struct TestDrop(Rc<RefCell<u32>>);
+    impl TestDrop {
+        fn run(&self) {
+            unreachable!("TestDrop::run should never execute");
+        }
+    }
+    impl Drop for TestDrop {
+        fn drop(&mut self) {
+            *self.0.borrow_mut() += 1;
+        }
+    }
+
+    #[test]
+    fn test_drop() {
+        let confirm = Rc::new(RefCell::new(0));
+        let mut queue = super::FnOnceQueue::<()>::new();
+        let test = TestDrop(confirm.clone());
+        queue.push(move |_| test.run());
+        assert!(queue.len() > 0);
+        assert_eq!(0, *confirm.borrow());
+        drop(queue);
+        assert_eq!(1, *confirm.borrow());
+    }
 }
 
 // Problem that `CallTrait` solves is calling a `FnOnce` from a &mut
@@ -333,6 +405,6 @@ impl<S, F: FnOnce(&mut S)> CallTrait<S> for CallItem<S, F> {
 
 impl<S, F: FnOnce(&mut S)> Drop for CallItem<S, F> {
     fn drop(&mut self) {
-        panic!("CallItem must never be dropped");
+        unreachable!("CallItem must never be dropped");
     }
 }

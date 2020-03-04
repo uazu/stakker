@@ -1,8 +1,9 @@
-// Safe variant of actor: costs ~24 bytes more than minimum possible
+// Safe variant of actor: costs ~16 bytes more than minimum possible
 use crate::actor::{Prep, State};
 use crate::cell::cell::{ActorCell, ActorCellOwner};
 use crate::queue::FnOnceQueue;
-use crate::{ActorDied, Core, Deferrer, Fwd, Stakker};
+use crate::rc::count::CountAndState;
+use crate::{Core, Deferrer, Ret, Stakker, StopCause};
 use std::cell::Cell;
 use std::mem;
 use std::rc::Rc;
@@ -12,8 +13,8 @@ use std::rc::Rc;
 // both inside and outside of ActorCell to make it safe.
 struct ActorBox<A> {
     // 16 bytes for Rc, plus ...
-    state: Cell<State>,                   // 8
-    notify: Cell<Option<Fwd<ActorDied>>>, // 16
+    strong: Cell<CountAndState>,          // 8
+    notify: Cell<Option<Ret<StopCause>>>, // 16
     inner: ActorCell<Inner<A>>,           // 8 + A
     deferrer: Deferrer,                   // 0 or 8
 }
@@ -27,9 +28,9 @@ enum Inner<A> {
 pub(crate) struct ActorRc<A: 'static>(Rc<ActorBox<A>>);
 
 impl<A> ActorRc<A> {
-    pub fn new(core: &mut Core, notify: Option<Fwd<ActorDied>>) -> Self {
+    pub fn new(core: &mut Core, notify: Option<Ret<StopCause>>) -> Self {
         Self(Rc::new(ActorBox {
-            state: Cell::new(State::Prep),
+            strong: Cell::new(CountAndState::new()),
             notify: Cell::new(notify),
             inner: core.actor_maker.cell(Inner::Prep(Prep {
                 queue: FnOnceQueue::new(),
@@ -39,27 +40,43 @@ impl<A> ActorRc<A> {
     }
 
     #[inline]
+    fn strong(&self) -> &Cell<CountAndState> {
+        &self.0.strong
+    }
+
+    pub fn strong_inc(&self) {
+        self.strong().replace(self.strong().get().inc());
+    }
+    pub fn strong_dec(&self) -> bool {
+        let (count, went_to_zero) = self.strong().get().dec();
+        self.strong().replace(count);
+        went_to_zero
+    }
+
+    #[inline]
     pub fn is_zombie(&self) -> bool {
-        self.0.state.get() == State::Zombie
+        self.strong().get().is_zombie()
     }
     #[inline]
     pub fn is_prep(&self) -> bool {
-        self.0.state.get() == State::Prep
+        self.strong().get().is_prep()
     }
 
     pub fn to_ready(&self, s: &mut Stakker, val: A) {
         let inner = s.actor_owner.rw(&self.0.inner);
         match mem::replace(inner, Inner::Ready(val)) {
             Inner::Prep(mut prep) => {
+                self.strong()
+                    .replace(self.strong().get().set_state(State::Ready));
                 prep.queue.execute(s);
-                self.0.state.replace(State::Ready);
             }
             Inner::Ready(_) => panic!("Actor::to_ready() called twice"),
             Inner::Zombie => *inner = Inner::Zombie,
         }
     }
-    pub fn to_zombie(&self, s: &mut Stakker) -> Option<Fwd<ActorDied>> {
-        self.0.state.replace(State::Zombie);
+    pub fn to_zombie(&self, s: &mut Stakker) -> Option<Ret<StopCause>> {
+        self.strong()
+            .replace(self.strong().get().set_state(State::Zombie));
         *s.actor_owner.rw(&self.0.inner) = Inner::Zombie;
         self.0.notify.replace(None)
     }
@@ -77,8 +94,8 @@ impl<A> ActorRc<A> {
     }
 
     #[inline]
-    pub fn defer(&self, f: impl FnOnce(&mut Stakker) + 'static) {
-        self.0.deferrer.defer(f);
+    pub fn access_deferrer(&self) -> &Deferrer {
+        &self.0.deferrer
     }
 }
 

@@ -44,6 +44,16 @@ for my $bitmap (@order) {
 }
 
 for my $c (@comb) {
-    print("=== " . join(' ', @COMMAND) . " $c\n");
+    my $st = '';
+    if ($c =~ /multi-stakker|multi-thread/) {
+        delete $ENV{RUST_TEST_THREADS};
+    } else {
+        # If we're going to run with the 'global' deferrer option or
+        # the 'tcell' cell option, test will fail if it is run on
+        # multiple threads
+        $ENV{RUST_TEST_THREADS} = "1";
+        $st = " (single-threaded)";
+    }
+    print("=== " . join(' ', @COMMAND) . " $c$st\n");
     die "FAILED\n" unless 0 == system(@COMMAND, $c);
 }

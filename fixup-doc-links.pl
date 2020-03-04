@@ -1,6 +1,6 @@
 #!/usr/bin/perl -w
 
-# Version: 2020-01-23
+# Version: 2020-01-28
 #
 # This code assumes that it owns all the `[...]: ...` definitions at
 # the end of each doc comment block.  It deletes them and rewrites
@@ -71,11 +71,11 @@ sub process_section {
         pop @curr;
     }
     
-    # Make a list of links 
+    # Make a list of [`...`] links
     my %links = ();
     my $data = join('', @curr);
     $data =~ s/```.*?```//sg;
-    while ($data =~ /(\[.*?\])[^(]/g) {
+    while ($data =~ /(\[`.*?`\])[^(]/g) {
         $links{$1} = 1;
     }
     my @linkdefs = ();

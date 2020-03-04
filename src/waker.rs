@@ -77,13 +77,12 @@ impl WakeHandlers {
         }
     }
 
-    /// Restores a wake handler back into its slot in the slab.  If
-    /// the handler slot has been deleted, or is currently occupied
-    /// (not None), then panics as it means that something has gone
-    /// badly wrong.  It should not be possible for a wake handler to
-    /// delete itself.  A wake handler is only deleted when the
-    /// `Waker` is dropped.  A `drop_list` wake handler won't
-    /// delete itself.
+    // Restores a wake handler back into its slot in the slab.  If the
+    // handler slot has been deleted, or is currently occupied (not
+    // None), then panics as it means that something has gone badly
+    // wrong.  It should not be possible for a wake handler to delete
+    // itself.  A wake handler is only deleted when the [`Waker`] is
+    // dropped.  A `drop_list` wake handler won't delete itself.
     pub fn handler_restore(&mut self, bit: u32, cb: BoxFnMutCB) {
         if mem::replace(
             self.slab
@@ -172,7 +171,8 @@ impl WakeHandlers {
 
 /// Used to schedule a wake handler to be called in the main thread
 ///
-/// Obtain an instance using [`Core::waker`].  This primitive would
+/// Obtain an instance using [`Core::waker`], and pass it to the
+/// thread that needs to wake the main thread.  This primitive would
 /// normally be used in conjunction with a channel or some other
 /// shared list or shared state, to alert a wake handler in the main
 /// thread that there is a new message that needs attention, or that
@@ -184,7 +184,7 @@ impl WakeHandlers {
 /// wake handler is removed.
 ///
 /// Note that there is no mechanism for back-pressure or cancellation
-/// here, i.e. no way to inform a `Waker` that whatever the wake
+/// here, i.e. no way to inform a [`Waker`] that whatever the wake
 /// handler notifies has gone away or needs to pause.  This should all
 /// be handled via whatever channel or shared state is used to
 /// communicate data from the other thread to the main thread.
@@ -194,6 +194,7 @@ impl WakeHandlers {
 /// that things clean up nicely in case of failure of the actor.
 ///
 /// [`Core::waker`]: struct.Core.html#method.waker
+/// [`Waker`]: struct.Waker.html
 pub struct Waker {
     bit: u32,
     bitmap: Arc<BitMap>,
@@ -216,7 +217,15 @@ impl Waker {
     /// are wake bits set.  The wake bits are cleared and the
     /// corresponding wake handlers are called.  The longer the
     /// poll-wake process takes, the more wakes will be accumulated in
-    /// the bitmap, so this parallelizes well.
+    /// the bitmap, making the next wake more efficient, so this
+    /// scales well.
+    ///
+    /// Note that this operation has to be as cheap as possible
+    /// because with a channel for example, you'll need to call it
+    /// every time you add an item.  Trying to detect when you add the
+    /// first item to an empty queue is unreliable due to races,
+    /// unless the channel has specific support for that, some kind of
+    /// `send_and_was_empty()` call.
     ///
     /// [`Waker`]: struct.Waker.html
     pub fn wake(&self) {

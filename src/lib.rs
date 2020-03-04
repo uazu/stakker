@@ -28,21 +28,29 @@
 //! actor.  Create an actor with [`actor!`] and call it with
 //! [`call!`].
 //!
-//! [`Fwd`] forwards data to another destination, typically to a
-//! particular entry-point in a particular actor.  So `Fwd` instances
-//! take the role of callback functions.  They are ref-counted, so can
-//! be cloned cheaply.  See the [`fwd_*!`](#macros) macros for
-//! creation of `Fwd` instances, and [`call!`] to make use of them.
+//! [`Fwd`] and [`Ret`] forward data to another destination
+//! asynchronously, typically to a particular entry-point in a
+//! particular actor.  So [`Fwd`] and [`Ret`] instances take the role
+//! of callback functions.  The difference between them is that
+//! [`Fwd`] may be called multiple times, is ref-counted for cheap
+//! cloning and is based on a `Fn` with `Copy`, whereas [`Ret`] can be
+//! used only once, is based on `FnOnce` and is a "move" value.  Also
+//! the [`Ret`] end-point is informed if the [`Ret`] instance is
+//! dropped without sending back a message, for example if a zombie
+//! actor is called.  See the [`fwd_*!`](#macros) and
+//! [`ret_*!`](#macros) macros for creation of instances, and [`fwd!`]
+//! and [`ret!`] to make use of them.
 //!
 //! [`Stakker`] is the external interface to the runtime, i.e. how it
 //! is managed from the event loop, or during startup.
 //!
-//! [`Core`] is the part of the `Stakker` API which is also accessible
-//! to the actors during actor calls.
+//! [`Core`] is the part of the [`Stakker`] API which is also
+//! accessible to the actors during actor calls.  Both [`Stakker`] and
+//! [`Cx`] dereference to [`Core`] and can be used wherever a [`Core`]
+//! ref is required.
 //!
 //! [`Cx`] is the context passed to an actor entry-point.  It gives
-//! access to `Core` and also methods related to the actor being
-//! called.
+//! access to methods related to the actor being called.
 //!
 //! [`Share`] allows a mutable structure to be shared safely between
 //! actors, a bit like IPC shared-memory but with guaranteed exclusive
@@ -50,7 +58,9 @@
 //! buffers are sometimes used between OS processes.
 //!
 //! [`Deferrer`] allows queuing things to run from `Drop` handlers or
-//! from other places in the main thread without access to `Core`.
+//! from other places in the main thread without access to [`Core`].
+//! All actors have a built-in [`Deferrer`] which can be used from
+//! outside the actor.
 //!
 //! For interfacing with other threads, [`PipedThread`] wraps a thread
 //! and handles all data transfer to/from it and all cleanup.
@@ -73,14 +83,15 @@
 //! actor can directly access any other actor.
 //!
 //! By default a cut-down ref-counting implementation is used instead
-//! of `Rc`, which saves around two `usize` per actor and one `usize`
-//! per `Fwd`.
+//! of `Rc`, which saves around one `usize` per [`Actor`] or [`Fwd`]
+//! instance.
 //!
-//! By default only one thread is allowed to run a `Stakker` instance,
-//! which allows a global variable to be used for the `Deferrer` lazy
-//! defer queue (used for drop handlers).  However if more `Stakker`
-//! instances need to be run, then the **multi-thread** or
-//! **multi-stakker** features select other implementations instead.
+//! By default only one thread is allowed to run a [`Stakker`]
+//! instance, which enables an optimisation which uses a global
+//! variable for the [`Deferrer`] defer queue (used for drop
+//! handlers).  However if more [`Stakker`] instances need to be run,
+//! then the **multi-thread** or **multi-stakker** features cause it
+//! to fall back to alternative implementations.
 //!
 //! All deferred operations, including all async actor calls, are
 //! handled as `FnOnce` instances on a queue.  The aim is to make this
@@ -97,7 +108,8 @@
 //! also available.
 //!
 //! Forwarding handlers ([`Fwd`]) are boxed `Fn` instances along with
-//! a ref-count, which typically queue a `FnOnce` operation when
+//! a ref-count.  Return handlers ([`Ret`]) are boxed `FnOnce`
+//! instances.  Both typically queue a `FnOnce` operation when
 //! provided with arguments.  These are also efficient due to
 //! inlining.  In this case two chunks of inlined code are generated
 //! for each by the compiler: the first which accepts arguments and
@@ -132,10 +144,10 @@
 //! Enabled by default:
 //!
 //! - **anymap**: Brings in the `anymap` crate.  When enabled,
-//! `Stakker` keeps an `AnyMap` which can be used to store and access
-//! Stakker-wide values.  The intended use is for passing things
-//! related to the outer context through to actors, such as an I/O
-//! polling instance.  The alternative is to pass these through on
+//! [`Stakker`] keeps an `AnyMap` which can be used to store and
+//! access Stakker-wide values.  The intended use is for passing
+//! things related to the outer context through to actors, such as an
+//! I/O polling instance.  The alternative is to pass these through on
 //! actor creation.
 //!
 //! - **inter-thread**: Enables inter-thread operations such as
@@ -157,9 +169,21 @@
 //! need to run in the same thread.  This disables optimisations that
 //! require either process-wide or thread-local access.
 //!
-//! - **inline-deferrer**: Forces use of the inline `Deferrer`
+//! - **inline-deferrer**: Forces use of the inline [`Deferrer`]
 //! implementation instead of using the global or thread-local
 //! implementation.  Possibly useful if thread-locals are very slow.
+//!
+//! Testing features:
+//!
+//! - **test-multi-thread**: This is enabled by default, because
+//! otherwise a plain `cargo test` or crater run test will fail.  It
+//! has the effect of forcing **multi-thread** to be enabled when a
+//! test runs.  This is to work around there being no way to force
+//! `cargo test` to run tests on a single thread without giving it an
+//! extra argument or environment variable.  This feature should be
+//! disabled if you want to be sure that you're testing with exactly
+//! the same features as the main build of your application.  It will
+//! be removed if another solution can be found.
 //!
 //! These are the implementations that are switched, in order of
 //! preference, listing most-preferred first:
@@ -178,17 +202,18 @@
 //!
 //! ### Drop deferrer
 //!
-//! - Global deferrer: Uses a global variable to find the `Deferrer`
+//! - Global deferrer: Uses a global variable to find the [`Deferrer`]
 //!
-//! - Thread-local deferrer: Uses a thread-local to find the `Deferrer`
+//! - Thread-local deferrer: Uses a thread-local to find the
+//! [`Deferrer`], with safe and unsafe variants
 //!
-//! - Inline deferrer: Keeps references to the `Deferrer` in all
-//! places where it is needed.  In particular this adds a `usize` to
-//! all actors.
+//! - Inline deferrer: Keeps references to the [`Deferrer`] in all
+//! places where it is needed, with safe and unsafe variants.  In
+//! particular this adds a `usize` to all actors.
 //!
 //! ### Actor ref-counting
 //!
-//! - Packed: Uses a little unsafe code to save two `usize` per actor
+//! - Packed: Uses a little unsafe code to save a `usize` per actor
 //!
 //! - Standard: Uses `std::rc::Rc`
 //!
@@ -203,8 +228,8 @@
 //! # Tutorial example
 //!
 //! ```
-//!# use stakker::{actor, after, call, fwd_nop, fwd_shutdown, fwd_to};
-//!# use stakker::{Actor, Cx, Fwd, Stakker};
+//!# use stakker::{actor, after, call, ret_nop, ret_shutdown, fwd_to, ret, ret_some_to};
+//!# use stakker::{Actor, CX, Fwd, Stakker, Ret};
 //!# use std::time::{Duration, Instant};
 //!#
 //! // An actor is represented as a struct which holds the actor state
@@ -216,13 +241,14 @@
 //! impl Light {
 //!     // This is a "Prep" method which is used to create a Self value
 //!     // for the actor.  `cx` is the actor context and gives access to
-//!     // Stakker `Core`.  A "Prep" method doesn't have to return a Self
-//!     // value right away.  For example it might asynchronously attempt
-//!     // a connection to a remote server first before arranging a call
-//!     // to another "Prep" function which returns the Self value.  Once
-//!     // a value is returned, the actor is "Ready" and any queued-up
-//!     // operations on the actor will be executed.
-//!     pub fn init(cx: &mut Cx<Self>) -> Option<Self> {
+//!     // Stakker `Core`.  (`CX![]` expands to `&mut Cx<'_, Self>`.)
+//!     // A "Prep" method doesn't have to return a Self value right away.
+//!     // For example it might asynchronously attempt a connection to a
+//!     // remote server first before arranging a call to another "Prep"
+//!     // function which returns the Self value.  Once a value is returned,
+//!     // the actor is "Ready" and any queued-up operations on the actor
+//!     // will be executed.
+//!     pub fn init(cx: CX![]) -> Option<Self> {
 //!         // Use cx.now() instead of Instant::now() to allow execution
 //!         // in virtual time if supported by the environment.
 //!         let start = cx.now();
@@ -231,7 +257,7 @@
 //!
 //!     // Methods that may be called once the actor is "Ready" have a
 //!     // `&mut self` or `&self` first argument.
-//!     pub fn set(&mut self, cx: &mut Cx<Self>, on: bool) {
+//!     pub fn set(&mut self, cx: CX![], on: bool) {
 //!         self.on = on;
 //!         let time = cx.now() - self.start;
 //!         println!("{:04}.{:03} Light on: {}", time.as_secs(), time.subsec_millis(), on);
@@ -239,8 +265,8 @@
 //!
 //!     // A `Fwd` instance allows forwarding data to arbitrary
 //!     // destinations, like an async callback.
-//!     pub fn query(&self, cx: &mut Cx<Self>, fwd: Fwd<bool>) {
-//!         call!([fwd], cx, self.on);
+//!     pub fn query(&self, cx: CX![], ret: Ret<bool>) {
+//!         ret!([ret], self.on);
 //!     }
 //! }
 //!
@@ -252,33 +278,33 @@
 //! }
 //!
 //! impl Flasher {
-//!     pub fn init(cx: &mut Cx<Self>, light: Actor<Light>,
+//!     pub fn init(cx: CX![], light: Actor<Light>,
 //!                 interval: Duration, count: usize) -> Option<Self> {
 //!         // Defer first switch to the queue
-//!         call!(switch(cx, true));
+//!         call!([cx], switch(true));
 //!         Some(Self { light, interval, count })
 //!     }
 //!
-//!     pub fn switch(&mut self, cx: &mut Cx<Self>, on: bool) {
+//!     pub fn switch(&mut self, cx: CX![], on: bool) {
 //!         // Change the light state
-//!         call!([self.light], set(cx, on));
+//!         call!([self.light], set(on));
 //!
 //!         self.count -= 1;
 //!         if self.count != 0 {
 //!             // Call switch again after a delay
-//!             after!(self.interval, switch(cx, !on));
+//!             after!(self.interval, [cx], switch(!on));
 //!         } else {
-//!             // Terminate the actor successfully, causing notify to run
+//!             // Terminate the actor successfully, causing StopCause handler to run
 //!             cx.stop();
 //!         }
 //!
 //!         // Query the light state, receiving the response in the method
 //!         // `recv_state`, which has both fixed and forwarded arguments.
-//!         let fwd = fwd_to!(recv_state(cx, self.count) as (bool));
-//!         call!([self.light], query(cx, fwd));
+//!         let ret = ret_some_to!([cx], recv_state(self.count) as (bool));
+//!         call!([self.light], query(ret));
 //!     }
 //!     
-//!     fn recv_state(&self, _: &mut Cx<Self>, count: usize, state: bool) {
+//!     fn recv_state(&self, _: CX![], count: usize, state: bool) {
 //!         println!("  (at count {} received: {})", count, state);
 //!     }
 //! }
@@ -288,11 +314,12 @@
 //!
 //! // Create and initialise the Light and Flasher actors.  The
 //! // Flasher actor is given a reference to the Light.  Use a
-//! // notification handler to shutdown when the Flasher terminates.
-//! let light = actor!(Light::init(stakker), fwd_nop!());
+//! // StopCause handler to shutdown when the Flasher terminates.
+//! let light = actor!(stakker, Light::init(), ret_nop!());
 //! let _flasher = actor!(
-//!     Flasher::init(stakker, light.clone(), Duration::from_secs(1), 6),
-//!     fwd_shutdown!()
+//!     stakker,
+//!     Flasher::init(light.clone(), Duration::from_secs(1), 6),
+//!     ret_shutdown!(stakker)
 //! );
 //!
 //! // Since we're not in virtual time, we use `Instant::now()` in
@@ -316,7 +343,7 @@
 //!# } else {  // Use virtual time version when testing
 //!#     let mut now = Instant::now();
 //!#     while stakker.not_shutdown() {
-//!#         now += stakker.next_wait_max(Instant::now(), Duration::from_secs(60), false);
+//!#         now += stakker.next_wait_max(now, Duration::from_secs(60), false);
 //!#         stakker.run(now, false);
 //!#     }
 //!# }
@@ -338,7 +365,7 @@
 //! let mut now = Instant::now();
 //! stakker.run(now, false);
 //! while stakker.not_shutdown() {
-//!     now += stakker.next_wait_max(Instant::now(), Duration::from_secs(60), false);
+//!     now += stakker.next_wait_max(now, Duration::from_secs(60), false);
 //!     stakker.run(now, false);
 //! }
 //!# }
@@ -401,35 +428,45 @@
 //! [`Deferrer`]: struct.Deferrer.html
 //! [`Fwd`]: struct.Fwd.html
 //! [`PipedThread`]: struct.PipedThread.html
+//! [`Ret`]: struct.Ret.html
 //! [`Share`]: struct.Share.html
 //! [`Stakker`]: struct.Stakker.html
 //! [`Waker`]: struct.Waker.html
 //! [`actor!`]: macro.actor.html
 //! [`call!`]: macro.call.html
+//! [`fwd!`]: macro.fwd.html
+//! [`ret!`]: macro.ret.html
 
 // Insist on 2018 style
 #![deny(rust_2018_idioms)]
 // No unsafe code is allowed anywhere if no-unsafe is set
 #![cfg_attr(feature = "no-unsafe", forbid(unsafe_code))]
 
+// TODO: Switch to [cx].method maybe?  Takes up less space with
+// rustfmt, but sometimes wraps strangely
+
 pub use crate::core::{Core, Stakker};
-pub use actor::{Actor, ActorDied, ActorOwn, Cx};
+pub use actor::{Actor, ActorOwn, Cx, StopCause};
 pub use deferrer::Deferrer;
 pub use fwd::Fwd;
+pub use ret::Ret;
 pub use share::Share;
 pub use thread::{PipedLink, PipedThread};
 pub use timers::{FixedTimerKey, MaxTimerKey, MinTimerKey};
 pub use waker::Waker;
 
-// Static assertions
-static_assertions::assert_not_impl_any!(Actor<u8>: Send, Sync);
-static_assertions::assert_not_impl_any!(Stakker: Send, Sync);
-static_assertions::assert_not_impl_any!(Core: Send, Sync);
-static_assertions::assert_not_impl_any!(Cx<'_, u8>: Send, Sync);
-static_assertions::assert_not_impl_any!(Deferrer: Send, Sync);
-static_assertions::assert_not_impl_any!(Share<u8>: Send, Sync);
-static_assertions::assert_not_impl_any!(Fwd<u8>: Send, Sync);
-static_assertions::assert_not_impl_any!(Waker: Clone);
+// Trait checks
+static_assertions::assert_not_impl_any!(Stakker: Send, Sync, Copy, Clone);
+static_assertions::assert_not_impl_any!(Core: Send, Sync, Copy, Clone);
+static_assertions::assert_not_impl_any!(Cx<'_, u8>: Send, Sync, Copy, Clone);
+static_assertions::assert_not_impl_any!(Ret<u8>: Send, Sync, Copy, Clone);
+static_assertions::assert_not_impl_any!(Actor<u8>: Send, Sync, Copy);
+static_assertions::assert_not_impl_any!(Deferrer: Send, Sync, Copy);
+static_assertions::assert_not_impl_any!(Share<u8>: Send, Sync, Copy);
+static_assertions::assert_not_impl_any!(Fwd<u8>: Send, Sync, Copy);
+static_assertions::assert_not_impl_any!(Waker: Copy, Clone);
+static_assertions::assert_impl_all!(Actor<u8>: Clone);
+static_assertions::assert_impl_all!(Deferrer: Clone);
 static_assertions::assert_impl_all!(Share<u8>: Clone);
 static_assertions::assert_impl_all!(Fwd<u8>: Clone);
 static_assertions::assert_impl_all!(Waker: Send, Sync);
@@ -441,14 +478,22 @@ mod actor;
 mod core;
 mod fwd;
 mod macros;
+mod ret;
 mod share;
 mod thread;
 mod timers;
 mod waker;
 
+#[cfg(test)]
+mod test {
+    mod macro_coverage;
+    mod macros;
+}
+
 // Ref-counting selections
 #[cfg(not(feature = "no-unsafe"))]
 mod rc {
+    pub(crate) mod count;
     pub(crate) mod minrc;
 
     pub(crate) mod actorrc_packed;
@@ -459,6 +504,8 @@ mod rc {
 }
 #[cfg(feature = "no-unsafe")]
 mod rc {
+    pub(crate) mod count;
+
     pub(crate) mod actorrc_std;
     pub(crate) use actorrc_std::ActorRc;
 
@@ -470,7 +517,7 @@ mod rc {
 #[cfg(all(
     not(feature = "inline-deferrer"),
     not(feature = "multi-stakker"),
-    not(feature = "multi-thread"),
+    not(any(feature = "multi-thread", all(test, feature = "test-multi-thread"))),
     not(feature = "no-unsafe")
 ))]
 mod deferrer {
@@ -484,13 +531,19 @@ mod deferrer {
 #[cfg(all(
     not(feature = "inline-deferrer"),
     not(feature = "multi-stakker"),
-    feature = "multi-thread",
+    any(feature = "multi-thread", all(test, feature = "test-multi-thread")),
 ))]
 mod deferrer {
     mod api;
     pub use api::Deferrer;
 
+    #[cfg(feature = "no-unsafe")]
+    mod thread_local_safe;
+    #[cfg(feature = "no-unsafe")]
+    use thread_local_safe::DeferrerAux;
+    #[cfg(not(feature = "no-unsafe"))]
     mod thread_local;
+    #[cfg(not(feature = "no-unsafe"))]
     use thread_local::DeferrerAux;
 }
 
@@ -501,20 +554,26 @@ mod deferrer {
     not(all(
         not(feature = "inline-deferrer"),
         not(feature = "multi-stakker"),
-        not(feature = "multi-thread"),
+        not(any(feature = "multi-thread", all(test, feature = "test-multi-thread"))),
         not(feature = "no-unsafe")
     )),
     not(all(
         not(feature = "inline-deferrer"),
         not(feature = "multi-stakker"),
-        feature = "multi-thread",
-    ))
+        any(feature = "multi-thread", all(test, feature = "test-multi-thread")),
+    )),
 ))]
 mod deferrer {
     mod api;
     pub use api::Deferrer;
 
+    #[cfg(feature = "no-unsafe")]
+    mod inline_safe;
+    #[cfg(feature = "no-unsafe")]
+    use inline_safe::DeferrerAux;
+    #[cfg(not(feature = "no-unsafe"))]
     mod inline;
+    #[cfg(not(feature = "no-unsafe"))]
     use inline::DeferrerAux;
 }
 
@@ -532,27 +591,25 @@ mod queue {
 }
 
 // Cell selection
-#[cfg(all(not(feature = "multi-stakker"), not(feature = "multi-thread")))]
+#[cfg(all(
+    not(feature = "multi-stakker"),
+    not(any(feature = "multi-thread", all(test, feature = "test-multi-thread")))
+))]
 mod cell {
-    // For testing we have to protect the TCellOwner from use in parallel
-    #[cfg(test)]
-    pub(crate) mod protected_tcellowner;
-    #[cfg(test)]
-    pub(crate) use protected_tcellowner::ProtectedTCellOwner as TCellOwner;
-    #[cfg(not(test))]
-    pub(crate) use qcell::TCellOwner;
-
     pub(crate) mod tcell;
     pub(crate) use tcell as cell;
 }
 
-#[cfg(all(not(feature = "multi-stakker"), feature = "multi-thread"))]
+#[cfg(all(
+    not(feature = "multi-stakker"),
+    any(feature = "multi-thread", all(test, feature = "test-multi-thread"))
+))]
 mod cell {
     pub(crate) mod tlcell;
     pub(crate) use tlcell as cell;
 }
 
-#[cfg(all(feature = "multi-stakker"))]
+#[cfg(feature = "multi-stakker")]
 mod cell {
     pub(crate) mod qcell;
     pub(crate) use self::qcell as cell;

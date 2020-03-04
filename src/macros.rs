@@ -16,8 +16,22 @@
 //! Also, argument types are checked early where possible, to give
 //! easier to understand error messages.
 
-// TODO Write deep tests for all macros.  Need to check all unique
-// paths through macros, in order to detect any errors.
+/// Shorthand for context argument type
+///
+/// Usually (for Rust 2018 edition) the context argument must be
+/// written `cx: &mut Cx<'_, Self>`.  Using this macro it can instead
+/// be written `cx: CX![]`.  This reduces the boilerplate, but keeps
+/// everything else as plain Rust.  (The alternative would be to try
+/// to wrap the whole method in a macro or use procedural macros.)
+///
+/// Note that sometimes you'll need a context with a different type
+/// than `Self`, in which case `cx: CX![OtherType]` may be used,
+/// equivalent to `cx: &mut Cx<'_, OtherType>`.
+#[macro_export]
+macro_rules! CX {
+    () => { &mut stakker::Cx<'_, Self> };
+    ($other:ty) => { &mut stakker::Cx<'_, $other> };
+}
 
 // Generate lists of indices from lists of `tt` AST objects.  This is
 // used to convert arguments lists into indices so that a tuple can be
@@ -58,35 +72,58 @@ macro_rules! indices {
     { stakker::indices!($($rest)* [ 0 1 2 3 4 5 6 7 8 9 ]) };
 }
 
+// Used to insert empty function calls in test mode which let us test
+// coverage of the macro branches
+#[cfg(test)]
+#[doc(hidden)]
+#[macro_export]
+macro_rules! COVERAGE {
+    ($name:ident) => {
+        stakker::test::macro_coverage::$name();
+    };
+}
+#[cfg(not(test))]
+#[doc(hidden)]
+#[macro_export]
+macro_rules! COVERAGE {
+    ($name:ident) => {};
+}
+
 /// Create a new actor and initialise it
 ///
 /// ```ignore
-/// let actor = actor!(Type::init(core, args...), notify);
-/// let actor = actor!(<path::Type>::init(core, args...), notify);
+/// let actor = actor!(core, Type::init(args...), notify);
+/// let actor = actor!(core, <path::Type>::init(args...), notify);
 /// ```
 ///
 /// This may be used when creation and initialisation of the actor can
 /// be done together.  Otherwise see [`actor_new!`].  The actor is
 /// created and then the given initialisation function is called
-/// asynchronously.  The `notify` argument is a `Fwd<ActorDied>`
-/// instance to call if the actor is terminated.
+/// asynchronously.  The `notify` argument is a `Ret<StopCause>`
+/// instance to call if the actor is terminated.  An [`ActorOwn`]
+/// reference is returned.
 ///
 /// Implemented using [`ActorOwn::new`].
 ///
 /// [`ActorOwn::new`]: struct.ActorOwn.html#method.new
+/// [`ActorOwn`]: struct.ActorOwn.html
 /// [`actor_new!`]: macro.actor_new.html
 #[macro_export]
 macro_rules! actor {
-    ($type:ident :: $init:ident($core:expr $(, $x:expr)*), $notify:expr) => {{
+    ($core:expr, $type:ident :: $init:ident($($x:expr),*), $notify:expr) => {{
+        stakker::COVERAGE!(actor_0);
         let notify = $notify;
-        let actor = stakker::ActorOwn::<$type>::new($core, notify);
-        stakker::call!([actor], <$type>::init($core $(, $x)*));
+        let core = $core.access_core();
+        let actor = stakker::ActorOwn::<$type>::new(core, notify);
+        stakker::call!([actor], <$type>::init($($x),*));
         actor
     }};
-    (<$type:ty> :: $init:ident($core:expr $(, $x:expr)*), $notify:expr) => {{
+    ($core:expr, <$type:ty> :: $init:ident($($x:expr),*), $notify:expr) => {{
+        stakker::COVERAGE!(actor_1);
         let notify = $notify;
-        let actor = stakker::ActorOwn::<$type>::new($core, notify);
-        stakker::call!([actor], <$type>::init($core $(, $x)*));
+        let core = $core.access_core();
+        let actor = stakker::ActorOwn::<$type>::new(core, notify);
+        stakker::call!([actor], <$type>::init($($x),*));
         actor
     }};
 }
@@ -95,23 +132,27 @@ macro_rules! actor {
 ///
 /// This may be used when creation and initialisation of the actor
 /// must be done separately, for example when two actors need to be
-/// initialised with `Fwd` instances pointing to each other.
+/// initialised with [`Fwd`] instances pointing to each other.
 /// Otherwise see [`actor!`].
 ///
 /// ```ignore
-/// let actor = actor_new!(Type, core, notify);
-/// call!([actor], Type::init(core, arg1, arg2...));
+/// let actor = actor_new!(core, Type, notify);
+/// call!([actor, core], Type::init(arg1, arg2...));
 /// ```
 ///
-/// Implemented using [`ActorOwn::new`].
+/// An [`ActorOwn`] reference is returned.  Implemented using
+/// [`ActorOwn::new`].
 ///
 /// [`ActorOwn::new`]: struct.ActorOwn.html#method.new
+/// [`ActorOwn`]: struct.ActorOwn.html
+/// [`Fwd`]: struct.Fwd.html
 /// [`actor!`]: macro.actor.html
 #[macro_export]
 macro_rules! actor_new {
-    ($type:ty, $core:expr, $notify:expr) => {{
+    ($core:expr, $type:ty, $notify:expr) => {{
+        stakker::COVERAGE!(actor_new);
         let notify = $notify;
-        stakker::ActorOwn::<$type>::new($core, notify)
+        stakker::ActorOwn::<$type>::new($core, notify) // Expecting Cx, Core or Stakker ref
     }};
 }
 
@@ -119,176 +160,146 @@ macro_rules! actor_new {
 #[doc(hidden)]
 #[macro_export]
 macro_rules! generic_call {
-    ($h1:ident $h2:ident $hargs:tt; [$actor:expr], $method:ident ( $core:expr $(, $x:expr)* )) => {{
-        let actor: stakker::Actor<_> = $actor.clone();
-        let args = ( $($x,)* );
-        stakker::indices!([$(($x))*] generic_call_ready $h1 $hargs $core; actor args $method)
-    }};
-    ($h1:ident $h2:ident $hargs:tt; [$actor:expr], $type:ident :: $method:ident ( $core:expr $(, $x:expr)* )) => {{
-        let actor: stakker::Actor<_> = $actor.clone();
-        let args = ( $($x,)* );
-        stakker::indices!([$(($x))*] generic_call_prep $h1 $hargs $core; actor args <$type> $method)
-    }};
-    ($h1:ident $h2:ident $hargs:tt; [$actor:expr], < $type:ty > :: $method:ident ( $core:expr $(, $x:expr)* )) => {{
-        let actor: stakker::Actor<_> = $actor.clone();
-        let args = ( $($x,)* );
-        stakker::indices!([$(($x))*] generic_call_prep $h1 $hargs $core; actor args <$type> $method)
-    }};
-    ($h1:ident $h2:ident $hargs:tt; $method:ident ( $cx:expr $(, $x:expr)* )) => {{
-        let actor = $cx.this().clone();
-        let args = ( $($x,)* );
-        stakker::indices!([$(($x))*] generic_call_ready $h1 $hargs $cx; actor args $method)
-    }};
-    ($h1:ident $h2:ident $hargs:tt; $type:ident :: $method:ident ( $cx:expr $(, $x:expr)* )) => {{
-        let actor = $cx.this().clone();
-        let args = ( $($x,)* );
-        stakker::indices!([$(($x))*] generic_call_prep $h1 $hargs $cx; actor args <$type> $method)
-    }};
-    ($h1:ident $h2:ident $hargs:tt; < $type:ty > :: $method:ident ( $cx:expr $(, $x:expr)* )) => {{
-        let actor = $cx.this().clone();
-        let args = ( $($x,)* );
-        stakker::indices!([$(($x))*] generic_call_prep $h1 $hargs $cx; actor args <$type> $method)
-    }};
-    ($h1:ident $h2:ident $hargs:tt; $cx:expr, move |$this:ident, $cxid:ident| $body:expr) => {{
-        let cb = move |$this, $cxid| $body;
-        let this = $cx.this().clone();
-        stakker::$h1!($hargs $cx; move |s| this.apply(s, cb));
-    }};
-    ($h1:ident $h2:ident $hargs:tt; $cx:expr, |$this:ident, $cxid:ident| $body:expr) => {{
-        let cb = |$this, $cxid| $body;
-        let this = $cx.this().clone();
-        stakker::$h1!($hargs $cx; move |s| this.apply(s, cb));
-    }};
-    ($h1:ident $h2:ident $hargs:tt; $core:expr, move |$stakker:ident| $x:expr) => {{
-        let cb = move |$stakker| $x;
-        stakker::$h1!($hargs $core; cb);
-    }};
-    ($h1:ident $h2:ident $hargs:tt; $core:expr, |$stakker:ident| $x:expr) => {{
-        let cb = |$stakker| $x;
-        stakker::$h1!($hargs $core; cb);
-    }};
-    // `[fwd], core` might be confused with a method call if core is a
-    // call expression, so match this last.  Normally there would be
-    // no reason for `core` to be a call expression, so this is a not
-    // a big inconvenience.  Note: a single argument isn't passed as a
-    // tuple, so has special handling.
-    ($h1:ident $h2:ident $hargs:tt; [ $fwd:expr ], $core:expr, $arg:expr) => {{
-        let arg = $arg;
-        stakker::$h2!($hargs $core; $fwd; arg);
-    }};
-    ($h1:ident $h2:ident $hargs:tt; [ $fwd:expr ], $core:expr $(, $arg:expr)*) => {{
-        let arg = ( $($arg ,)* );
-        stakker::$h2!($hargs $core; $fwd; arg);
-    }};
+    ($handler:ident $hargs:tt $access:ident;
+     [$cx:expr], move |$this:ident, $cxid:ident| $body:expr) => {{
+         stakker::COVERAGE!(generic_call_0);
+         let cb = move |$this: &mut Self, $cxid: &mut stakker::Cx<'_, Self>| $body;
+         let cx: &mut stakker::Cx<'_, Self> = $cx;  // Expecting Cx<Self> ref
+         let this = cx.this().clone();
+         let core = $cx.access_core();
+         stakker::$handler!($hargs core; move |s| this.apply(s, cb));
+     }};
+    ($handler:ident $hargs:tt $access:ident;
+     [$core:expr], move |$stakker:ident| $body:expr) => {{
+         stakker::COVERAGE!(generic_call_1);
+         let core = $core.access_core();  // Expecting Core, Cx or Stakker ref
+         let cb = move |$stakker : &mut stakker::Stakker| $body;
+         stakker::$handler!($hargs core; cb);
+     }};
+    // All remaining [actor] turned to [actor, actor]
+    ($handler:ident $hargs:tt $access:ident;
+     [$actor_or_cx:expr], $($x:tt)+) => {{
+         // Can't do `let` for actor_or_cx here because that would move it and drop it
+         stakker::generic_call!($handler $hargs $access; [$actor_or_cx, $actor_or_cx], $($x)+)
+     }};
+    ($handler:ident $hargs:tt $access:ident;
+     [$actor:expr, $core:expr], $method:ident ( $($x:expr),* $(,)? )) => {{
+         stakker::COVERAGE!(generic_call_2);
+         let actor = $actor.access_actor().clone();  // Expecting Actor or Cx ref
+         let _args = ( $($x,)* );  // This must be before access borrow
+         let access = $core.$access();
+         stakker::indices!([$(($x))*] generic_call_ready $handler $hargs access; actor _args $method)
+     }};
+    ($handler:ident $hargs:tt $access:ident;
+     [$actor:expr, $core:expr], $type:ident :: $method:ident ( $($x:expr),* $(,)? )) => {{
+         stakker::COVERAGE!(generic_call_3);
+         let actor = $actor.access_actor().clone();  // Expecting Actor or Cx ref
+         let _args = ( $($x,)* );  // This must be before access borrow
+         let access = $core.$access();
+         stakker::indices!([$(($x))*] generic_call_prep $handler $hargs access; actor _args <$type> $method)
+     }};
+    ($handler:ident $hargs:tt $access:ident;
+     [$actor:expr, $core:expr], < $type:ty > :: $method:ident ( $($x:expr),* $(,)? )) => {{
+         stakker::COVERAGE!(generic_call_4);
+         let actor = $actor.access_actor().clone();  // Expecting Actor or Cx ref
+         let _args = ( $($x,)* );  // This must be before access borrow
+         let access = $core.$access();
+         stakker::indices!([$(($x))*] generic_call_prep $handler $hargs access; actor _args <$type> $method)
+     }};
 }
 #[doc(hidden)]
 #[macro_export]
 macro_rules! generic_call_ready {
-    ($handler:ident $hargs:tt $core:expr; $actor:ident $args:ident $method:ident [$($xi:tt)*]) => {
+    ($handler:ident $hargs:tt $core:ident; $actor:ident $args:ident $method:ident [$($xi:tt)*]) => {
         stakker::$handler!($hargs $core; move |s| $actor.apply(s, move |o, c| o.$method(c $(, $args.$xi)*)))
     }
 }
 #[doc(hidden)]
 #[macro_export]
 macro_rules! generic_call_prep {
-    ($handler:ident $hargs:tt $core:expr; $actor:ident $args:ident <$atyp:ty> $method:ident [$($xi:tt)*]) => {
+    ($handler:ident $hargs:tt $core:ident; $actor:ident $args:ident <$atyp:ty> $method:ident [$($xi:tt)*]) => {
         stakker::$handler!($hargs $core; move |s| $actor.apply_prep(s, move |c| <$atyp>::$method(c $(, $args.$xi)*)))
     }
 }
 
-/// Queue an actor call, forward call or inline code for execution soon
+/// Queue an actor call or inline code for execution soon
 ///
 /// The call is deferred to the main defer queue, which will execute
 /// as soon as possible.
 ///
 /// Note that in the examples below, in general there can be any
 /// number of arguments, including zero.  The number of arguments
-/// depends on the signature of the called method or `Fwd` instance.
-/// All of these values may be full Rust expressions.  Exceptions are
-/// method names, types/paths and argument names for closures which
-/// may be any valid identifier.
+/// depends on the signature of the called method.  All of these
+/// values may be full Rust expressions, which are evaluated at the
+/// call-site before queuing the call.  The exceptions are method
+/// names, types/paths and argument names for closures which may be
+/// any valid identifier.
 ///
-/// Note that the context or core reference is included in the
-/// argument lists to make the form of the argument list look similar
-/// to the signature of the method.  However this core or context
-/// reference is only used to add the call to the queue or to obtain a
-/// reference to the current actor.  When the call executes it will be
-/// given a fresh context.
+/// Note that the part in square brackets gives the context of the
+/// call.  For calls to the same actor, this is normally just `cx`.
+/// For calls to another actor, normally the actor and a [`Core`]
+/// reference should be given (e.g. `cx`), but if the [`Core`]
+/// reference is omitted, the actor's built-in [`Deferrer`] is used
+/// instead.  There is no difference in functionality (apart from
+/// borrowing issues), just that [`Core`] is more likely to be in
+/// cache.
 ///
 /// ```ignore
 /// // Call a method in this actor or in another actor
-/// call!(method(cx, arg1, arg2...));
-/// call!([actorxx], method(core, arg1, arg2...));
+/// call!([cx], method(arg1, arg2...));
+/// call!([actorxx, core], method(arg1, arg2...));
 ///
 /// // Call a method whilst the actor is in the 'Prep' state, before it
-/// // has a `Self` instance
-/// call!(Self::method(cx, arg1, arg2...));
-/// call!(<path::Type>::method(cx, arg1, arg2...));
-/// call!([actoryy], Type::method(core, arg1, arg2...));
-/// call!([actorzz], <path::Type>::method(core, arg1, arg2...));
+/// // has a `Self` instance.  `Type` here in the first line may be `Self`.
+/// call!([cx], Type::method(arg1, arg2...));
+/// call!([cx], <path::Type>::method(arg1, arg2...));
+/// call!([actoryy, core], Type::method(arg1, arg2...));
+/// call!([actorzz, core], <path::Type>::method(arg1, arg2...));
 ///
-/// // Forward data, using a `Fwd` instance
-/// call!([fwd2zz], core, arg1, arg2...);
+/// // Use the actor's built-in Deferrer; doesn't require Core
+/// call!([actorxx], method(arg1, arg2...));
+/// call!([actoryy], Type::method(arg1, arg2...));
+/// call!([actorzz], <path::Type>::method(arg1, arg2...));
 ///
 /// // Defer a call to inline code
-/// call!(cx, |this, cx| { ...code... });  // Inline code which refers to this actor
-/// call!(cx, move |this, cx| { ...code... });
-/// call!(core, |stakker| { ...code... }); // Generic inline code (`&mut Stakker` arg)
-/// call!(core, move |stakker| { ...code... });
+/// call!([cx], move |this, cx| ...code...);   // Inline code which refers to this actor
+/// call!([core], move |stakker| ...code...);  // Generic inline code (`&mut Stakker` arg)
 /// ```
 ///
-/// Note that `call!` also supports using [`Deferrer`] in place of
-/// `core` in some of the forms above.
-///
-/// ```ignore
-/// call!([actorxx], method(deferrer, arg1, arg2...));
-/// call!([actoryy], Type::method(deferrer, arg1, arg2...));
-/// call!([actorzz], <path::Type>::method(deferrer, arg1, arg2...));
-/// ```
-///
-/// When using [`Deferrer`] to send a message to a `Fwd` instance it's
-/// necessary to do it in two stages, because `Fwd` instances need
-/// access to the main queue.  So defer the forward call:
-///
-/// ```ignore
-/// deferrer.defer(|s| call!([fwd2zz], s, arg1, arg2...));
-/// ```
-///
-/// Implemented using [`Core::defer`], [`Actor::apply`] and
-/// [`Actor::apply_prep`].
+/// Implemented using [`Core::defer`], [`Actor::defer`],
+/// [`Actor::apply`] and [`Actor::apply_prep`].
 ///
 /// [`Actor::apply_prep`]: struct.Actor.html#method.apply_prep
 /// [`Actor::apply`]: struct.Actor.html#method.apply
+/// [`Actor::defer`]: struct.Actor.html#method.defer
 /// [`Core::defer`]: struct.Core.html#method.defer
+/// [`Core`]: struct.Core.html
 /// [`Deferrer`]: struct.Deferrer.html
 #[macro_export]
 macro_rules! call {
     ( $($x:tt)+ ) => {{
-        stakker::generic_call!(call_defer_aux call_fwd_aux (); $($x)+);
+        stakker::COVERAGE!(call_0);
+        stakker::generic_call!(call_aux () access_deferrer; $($x)+);
     }};
 }
 #[doc(hidden)]
 #[macro_export]
-macro_rules! call_defer_aux {
-    (() $core:expr; $cb:expr) => {
-        $core.defer($cb);
-    };
-}
-#[doc(hidden)]
-#[macro_export]
-macro_rules! call_fwd_aux {
-    (() $core:expr; $fwd:expr; $arg:ident) => {
-        $fwd.fwd($core, $arg);
-    };
+macro_rules! call_aux {
+    (() $defer:ident; $cb:expr) => {{
+        stakker::COVERAGE!(call_1);
+        $defer.defer($cb);
+    }};
 }
 
-/// Lazily perform an actor call, forward call or inline code
+/// Lazily perform an actor call or inline code
 ///
 /// The call syntax accepted is identical to the [`call!`] macro.
-/// This queues calls to the lazy queue which is run only after the
-/// normal defer queue has been completely exhausted.  This can be
-/// used to run something at the end of this batch of processing, for
-/// example to minimize flushes.
+/// However the plain `[actor], ...` form is not accepted because a
+/// [`Core`] reference is always needed.  This queues calls to the
+/// lazy queue which is run only after the normal defer queue has been
+/// completely exhausted.  This can be used to run something at the
+/// end of this batch of processing, for example to flush buffers
+/// after accumulating data.
 ///
 /// Implemented using [`Core::lazy`], [`Actor::apply`] and
 /// [`Actor::apply_prep`].
@@ -296,38 +307,33 @@ macro_rules! call_fwd_aux {
 /// [`Actor::apply_prep`]: struct.Actor.html#method.apply_prep
 /// [`Actor::apply`]: struct.Actor.html#method.apply
 /// [`Core::lazy`]: struct.Core.html#method.lazy
+/// [`Core`]: struct.Core.html
 /// [`call!`]: macro.call.html
 #[macro_export]
 macro_rules! lazy {
     ( $($x:tt)+ ) => {{
-        stakker::generic_call!(lazy_defer_aux lazy_fwd_aux (); $($x)+);
+        stakker::COVERAGE!(lazy_0);
+        stakker::generic_call!(lazy_aux () access_core; $($x)+); // Error? Try [actor, core] form
     }};
 }
 #[doc(hidden)]
 #[macro_export]
-macro_rules! lazy_defer_aux {
-    (() $core:expr; $cb:expr) => {
+macro_rules! lazy_aux {
+    (() $core:ident; $cb:expr) => {{
+        stakker::COVERAGE!(lazy_1);
         $core.lazy($cb);
-    };
-}
-#[doc(hidden)]
-#[macro_export]
-macro_rules! lazy_fwd_aux {
-    (() $core:expr; $fwd:expr; $arg:ident) => {
-        let fwd: stakker::Fwd<_> = $fwd.clone();
-        $core.lazy(move |s| fwd.fwd(s, $arg));
-    };
+    }};
 }
 
-/// Perform an actor call, forward call or inline code when the
-/// process becomes idle
+/// Perform an actor call or inline code when the process becomes idle
 ///
 /// The call syntax accepted is identical to the [`call!`] macro.
-/// This queues calls to the idle queue which is run only when there
-/// is nothing left to run in the normal and lazy queues, and there is
-/// no I/O pending.  This can be used to create backpressure,
-/// i.e. fetch more data only when all current data has been fully
-/// processed.
+/// However the `[actor], ...` form is not accepted because a [`Core`]
+/// reference is always needed.  This queues calls to the idle queue
+/// which is run only when there is nothing left to run in the normal
+/// and lazy queues, and there is no I/O pending.  This can be used to
+/// create backpressure in the case of processing overload, i.e. fetch
+/// more data only when all current data has been fully processed.
 ///
 /// Implemented using [`Core::idle`], [`Actor::apply`] and
 /// [`Actor::apply_prep`].
@@ -335,34 +341,31 @@ macro_rules! lazy_fwd_aux {
 /// [`Actor::apply_prep`]: struct.Actor.html#method.apply_prep
 /// [`Actor::apply`]: struct.Actor.html#method.apply
 /// [`Core::idle`]: struct.Core.html#method.idle
+/// [`Core`]: struct.Core.html
 /// [`call!`]: macro.call.html
 #[macro_export]
 macro_rules! idle {
     ( $($x:tt)+ ) => {{
-        stakker::generic_call!(idle_defer_aux idle_fwd_aux (); $($x)+);
+        stakker::COVERAGE!(idle_0);
+        stakker::generic_call!(idle_aux () access_core; $($x)+); // Error? Try [actor, core] form
     }};
 }
 #[doc(hidden)]
 #[macro_export]
-macro_rules! idle_defer_aux {
-    (() $core:expr; $cb:expr) => {
+macro_rules! idle_aux {
+    (() $core:ident; $cb:expr) => {{
+        stakker::COVERAGE!(idle_1);
         $core.idle($cb);
-    };
-}
-#[doc(hidden)]
-#[macro_export]
-macro_rules! idle_fwd_aux {
-    (() $core:expr; $fwd:expr; $arg:ident) => {
-        let fwd: stakker::Fwd<_> = $fwd.clone();
-        $core.idle(move |s| fwd.fwd(s, $arg));
-    };
+    }};
 }
 
-/// After a delay, perform an actor call, forward call or inline code
+/// After a delay, perform an actor call or inline code
 ///
 /// The syntax of the calls is identical to [`call!`], but with a
-/// `Duration` argument first.  Returns a [`FixedTimerKey`] which can
-/// be used to delete the timer if necessary.  See also [`at!`].
+/// `Duration` argument first.  However the `[actor], ...` form is not
+/// accepted because a [`Core`] reference is always needed.  Returns a
+/// [`FixedTimerKey`] which can be used to delete the timer if
+/// necessary.  See also [`at!`].
 ///
 /// ```ignore
 /// after!(dur, ...args-as-for-call-macro...);
@@ -374,37 +377,34 @@ macro_rules! idle_fwd_aux {
 /// [`Actor::apply_prep`]: struct.Actor.html#method.apply_prep
 /// [`Actor::apply`]: struct.Actor.html#method.apply
 /// [`Core::after`]: struct.Core.html#method.after
+/// [`Core`]: struct.Core.html
 /// [`FixedTimerKey`]: struct.FixedTimerKey.html
 /// [`at!`]: macro.at.html
 /// [`call!`]: macro.call.html
 #[macro_export]
 macro_rules! after {
     ( $dur:expr, $($x:tt)+ ) => {{
+        stakker::COVERAGE!(after_0);
         let dur: Duration = $dur;
-        stakker::generic_call!(after_defer_aux after_fwd_aux (dur); $($x)+)
+        stakker::generic_call!(after_aux (dur) access_core; $($x)+) // Error? Try [actor, core] form
     }};
 }
 #[doc(hidden)]
 #[macro_export]
-macro_rules! after_defer_aux {
-    (($dur:ident) $core:expr; $cb:expr) => {
+macro_rules! after_aux {
+    (($dur:ident) $core:ident; $cb:expr) => {{
+        stakker::COVERAGE!(after_1);
         $core.after($dur, $cb);
-    };
-}
-#[doc(hidden)]
-#[macro_export]
-macro_rules! after_fwd_aux {
-    (($dur:ident) $core:expr; $fwd:expr; $arg:ident) => {
-        let fwd: stakker::Fwd<_> = $fwd.clone();
-        $core.after($dur, move |s| fwd.fwd(s, arg));
-    };
+    }};
 }
 
-/// At the given `Instant`, perform an actor call, forward call or inline code
+/// At the given `Instant`, perform an actor call or inline code
 ///
 /// The syntax of the calls is identical to [`call!`], but with an
-/// `Instant` argument first.  Returns a [`FixedTimerKey`] which can
-/// be used to delete the timer if necessary.  See also [`after!`].
+/// `Instant` argument first.  However the `[actor], ...` form is not
+/// accepted because a [`Core`] reference is always needed.  Returns a
+/// [`FixedTimerKey`] which can be used to delete the timer if
+/// necessary.  See also [`after!`].
 ///
 /// ```ignore
 /// at!(instant, ...args-as-for-call-macro...);
@@ -416,308 +416,324 @@ macro_rules! after_fwd_aux {
 /// [`Actor::apply_prep`]: struct.Actor.html#method.apply_prep
 /// [`Actor::apply`]: struct.Actor.html#method.apply
 /// [`Core::timer_add`]: struct.Core.html#method.timer_add
+/// [`Core`]: struct.Core.html
 /// [`FixedTimerKey`]: struct.FixedTimerKey.html
 /// [`after!`]: macro.after.html
 /// [`call!`]: macro.call.html
 #[macro_export]
 macro_rules! at {
     ( $inst:expr, $($x:tt)+ ) => {{
-        let inst: Instant = $inst;
-        stakker::generic_call!(at_defer_aux at_fwd_aux (inst); $($x)+)
+        stakker::COVERAGE!(at_0);
+        let inst: std::time::Instant = $inst;
+        stakker::generic_call!(at_aux (inst) access_core; $($x)+) // Error? Try [actor, core] form
     }};
 }
 #[doc(hidden)]
 #[macro_export]
-macro_rules! at_defer_aux {
-    (($inst:ident) $core:expr; $cb:expr) => {
+macro_rules! at_aux {
+    (($inst:ident) $core:ident; $cb:expr) => {{
+        stakker::COVERAGE!(at_1);
         $core.timer_add($inst, $cb)
-    };
-}
-#[doc(hidden)]
-#[macro_export]
-macro_rules! at_fwd_aux {
-    (($dur:ident) $core:expr; $fwd:expr; $arg:ident) => {
-        let fwd: stakker::Fwd<_> = $fwd.clone();
-        $core.timer_add($inst, move |s| fwd.fwd(s, arg))
-    };
+    }};
 }
 
-/// Create a "Max" timer
+/// Create or update a "Max" timer
 ///
 /// A "Max" timer expires at the latest (greatest) expiry time
-/// provided.  Returns a [`MaxTimerKey`] which can be used to update
-/// the expiry time or delete the timer using [`Core::timer_max_mod`]
-/// or [`Core::timer_max_del`].
+/// provided.  Modifies a [`MaxTimerKey`] variable or structure member
+/// provided by the caller, which should be initialised with
+/// `Default::default()` (which is an invalid timer key).  If the
+/// timer key currently in the variable is invalid or expired, then a
+/// new timer is created using the call-args following, and the key
+/// stored in the variable.  Otherwise the timer expiry time is
+/// updated with the maximum of the current and provided expiry times,
+/// and the call-args are ignored.  The timer may be deleted using
+/// [`Core::timer_max_del`].
 ///
-/// The syntax of the calls is identical to [`call!`], but with an
-/// `Instant` argument first.
+/// The syntax of the calls is identical to [`call!`], but with a
+/// variable reference and `Instant` argument first.  However the
+/// plain `[actor], ...` form is not accepted because a [`Core`]
+/// reference is always needed.
 ///
 /// ```ignore
-/// timer_max!(instant, ...args-as-for-call-macro...);
+/// let mut var = Default::default();
+///   :::
+/// timer_max!(&mut var, instant, ...args-as-for-call-macro...);
 /// ```
 ///
-/// Implemented using [`Core::timer_max_add`], [`Actor::apply`] and
+/// Implemented using [`Core::timer_max_upd`],
+/// [`Core::timer_max_add`], [`Actor::apply`] and
 /// [`Actor::apply_prep`].
 ///
 /// [`Actor::apply_prep`]: struct.Actor.html#method.apply_prep
 /// [`Actor::apply`]: struct.Actor.html#method.apply
 /// [`Core::timer_max_add`]: struct.Core.html#method.timer_max_add
 /// [`Core::timer_max_del`]: struct.Core.html#method.timer_max_del
-/// [`Core::timer_max_mod`]: struct.Core.html#method.timer_max_mod
+/// [`Core::timer_max_upd`]: struct.Core.html#method.timer_max_upd
+/// [`Core`]: struct.Core.html
 /// [`MaxTimerKey`]: struct.MaxTimerKey.html
 /// [`call!`]: macro.call.html
 #[macro_export]
 macro_rules! timer_max {
-    ( $inst:expr, $($x:tt)+ ) => {{
-        let inst: Instant = $inst;
-        stakker::generic_call!(timer_max_defer_aux timer_max_fwd_aux (inst); $($x)+)
+    ( $var:expr, $inst:expr, $($x:tt)+ ) => {{
+        stakker::COVERAGE!(timer_max_0);
+        let var: &mut stakker::MaxTimerKey = $var;
+        let inst: std::time::Instant = $inst;
+        stakker::generic_call!(timer_max_aux (var, inst) access_core; $($x)+) // Error? Try [actor, core] form
     }};
 }
 #[doc(hidden)]
 #[macro_export]
-macro_rules! timer_max_defer_aux {
-    (($inst:ident) $core:expr; $cb:expr) => {
-        $core.timer_max_add($inst, $cb)
-    };
-}
-#[doc(hidden)]
-#[macro_export]
-macro_rules! timer_max_fwd_aux {
-    (($dur:ident) $core:expr; $fwd:expr; $arg:ident) => {
-        let fwd: stakker::Fwd<_> = $fwd.clone();
-        $core.timer_max_add($inst, move |s| fwd.fwd(s, arg))
-    };
+macro_rules! timer_max_aux {
+    (($var:ident, $inst:ident) $core:ident; $cb:expr) => {{
+        stakker::COVERAGE!(timer_max_1);
+        if !$core.timer_max_upd(*$var, $inst) {
+            *$var = $core.timer_max_add($inst, $cb);
+        }
+    }};
 }
 
-/// Create a "Min" timer
+/// Create or update a "Min" timer
 ///
 /// A "Min" timer expires at the smallest (earliest) expiry time
-/// provided.  Returns a [`MinTimerKey`] which can be used to update
-/// the expiry time or delete the timer using [`Core::timer_min_mod`]
-/// or [`Core::timer_min_del`].
+/// provided.  Modifies a [`MinTimerKey`] variable or structure member
+/// provided by the caller, which should be initialised with
+/// `Default::default()` (which is an invalid timer key).  If the
+/// timer key currently in the variable is invalid or expired, then a
+/// new timer is created using the call-args following, and the key
+/// stored in the variable.  Otherwise the timer expiry time is
+/// updated with the minimum of the current and provided expiry times,
+/// and the call-args are ignored.  The timer may be deleted using
+/// [`Core::timer_min_del`].
 ///
-/// The syntax of the calls is identical to [`call!`], but with an
-/// `Instant` argument first.
+/// The syntax of the calls is identical to [`call!`], but with a
+/// variable reference and `Instant` argument first.  However the
+/// plain `[actor], ...` form is not accepted because a [`Core`]
+/// reference is always needed.
 ///
 /// ```ignore
-/// timer_min!(instant, ...args-as-for-call-macro...);
+/// let mut var = Default::default();
+///   :::
+/// timer_min!(&mut var, instant, ...args-as-for-call-macro...);
 /// ```
 ///
-/// Implemented using [`Core::timer_min_add`], [`Actor::apply`] and
+/// Implemented using [`Core::timer_min_upd`],
+/// [`Core::timer_min_add`], [`Actor::apply`] and
 /// [`Actor::apply_prep`].
 ///
 /// [`Actor::apply_prep`]: struct.Actor.html#method.apply_prep
 /// [`Actor::apply`]: struct.Actor.html#method.apply
 /// [`Core::timer_min_add`]: struct.Core.html#method.timer_min_add
 /// [`Core::timer_min_del`]: struct.Core.html#method.timer_min_del
-/// [`Core::timer_min_mod`]: struct.Core.html#method.timer_min_mod
+/// [`Core::timer_min_upd`]: struct.Core.html#method.timer_min_upd
+/// [`Core`]: struct.Core.html
 /// [`MinTimerKey`]: struct.MinTimerKey.html
 /// [`call!`]: macro.call.html
 #[macro_export]
 macro_rules! timer_min {
-    ( $inst:expr, $($x:tt)+ ) => {{
-        let inst: Instant = $inst;
-        stakker::generic_call!(timer_min_defer_aux timer_min_fwd_aux (inst); $($x)+)
+    ( $var:expr, $inst:expr, $($x:tt)+ ) => {{
+        stakker::COVERAGE!(timer_min_0);
+        let var: &mut stakker::MinTimerKey = $var;
+        let inst: std::time::Instant = $inst;
+        stakker::generic_call!(timer_min_aux (var, inst) access_core; $($x)+) // Error? Try [actor, core] form
     }};
 }
 #[doc(hidden)]
 #[macro_export]
-macro_rules! timer_min_defer_aux {
-    (($inst:ident) $core:expr; $cb:expr) => {
-        $core.timer_min_add($inst, $cb)
-    };
+macro_rules! timer_min_aux {
+    (($var:ident, $inst:ident) $core:ident; $cb:expr) => {{
+        stakker::COVERAGE!(timer_min_1);
+        if !$core.timer_min_upd(*$var, $inst) {
+            *$var = $core.timer_min_add($inst, $cb);
+        }
+    }};
 }
-#[doc(hidden)]
+
+/// Forward data via a [`Fwd`] instance
+///
+/// ```ignore
+/// fwd!([fwd2zz], arg1, arg2...);
+/// ```
+///
+/// There may be zero or more arguments, and they must match the
+/// message type.  Implemented using [`Fwd::fwd`]
+///
+/// [`Fwd::fwd`]: struct.Fwd.html#method.fwd
+/// [`Fwd`]: struct.Fwd.html
 #[macro_export]
-macro_rules! timer_min_fwd_aux {
-    (($dur:ident) $core:expr; $fwd:expr; $arg:ident) => {
-        let fwd: stakker::Fwd<_> = $fwd.clone();
-        $core.timer_min_add($inst, move |s| fwd.fwd(s, arg))
-    };
+macro_rules! fwd {
+    // A single argument isn't passed as a tuple, so has special
+    // handling.
+    ([ $fwd:expr ], $arg:expr) => {{
+        stakker::COVERAGE!(fwd_0);
+        $fwd.fwd($arg);
+    }};
+    ([ $fwd:expr ] $(, $arg:expr)*) => {{
+        stakker::COVERAGE!(fwd_1);
+        $fwd.fwd(( $($arg ,)* ));
+    }};
+}
+
+/// Return data via a [`Ret`] instance
+///
+/// ```ignore
+/// ret!([ret2zz], arg1, arg2...);
+/// ```
+///
+/// This consumes the [`Ret`] instance, which means that it cannot be
+/// used again.  There may be zero or more arguments, and they must
+/// match the message type.  Implemented using [`Ret::ret`].
+///
+/// [`Ret::ret`]: struct.Ret.html#method.ret
+/// [`Ret`]: struct.Ret.html
+#[macro_export]
+macro_rules! ret {
+    // A single argument isn't passed as a tuple, so has special
+    // handling.
+    ([ $ret:expr ], $arg:expr) => {{
+        stakker::COVERAGE!(ret_0);
+        $ret.ret($arg);
+    }};
+    ([ $ret:expr ] $(, $arg:expr)*) => {{
+        stakker::COVERAGE!(ret_1);
+        $ret.ret(( $($arg ,)* ));
+    }};
 }
 
 // Common code for `fwd_*!`
 #[doc(hidden)]
 #[macro_export]
 macro_rules! generic_fwd {
-    // Calling this actor
-    ($handler:ident; $method:ident ( $cx:expr $(, $x:expr)* ) as ( $($t:ty),* )) => {{
-        let args = ( $($x,)* );
-        let actor = $cx.this().clone();
-        stakker::indices!([$(($x))*] [$(($t))*] generic_fwd_ready $handler actor args ($($t,)*) $method)
+    // Calling actors
+    ($handler:ident; [$actor:expr], $method:ident ( $($x:expr),* ) as ( $($t:ty),* )) => {{
+        stakker::COVERAGE!(generic_fwd_0);
+        let actor = $actor.access_actor().clone();  // Expecting Actor or Cx ref
+        let _args = ( $($x,)* );
+        stakker::indices!([$(($x))*] [$(($t))*] generic_fwd_ready $handler actor _args ($($t,)*) $method)
     }};
-    ($handler:ident; $type:ident::$method:ident ( $cx:expr $(, $x:expr)* ) as ( $($t:ty),* )) => {{
-        let args = ( $($x,)* );
-        let actor = $cx.this().clone();
-        stakker::indices!([$(($x))*] [$(($t))*] generic_fwd_prep $handler actor args ($($t,)*) <$type> $method)
+    ($handler:ident; [$actor:expr], $type:ident::$method:ident ( $($x:expr),* ) as ( $($t:ty),* )) => {{
+        stakker::COVERAGE!(generic_fwd_1);
+        let actor = $actor.access_actor().clone();  // Expecting Actor or Cx ref
+        let _args = ( $($x,)* );
+        stakker::indices!([$(($x))*] [$(($t))*] generic_fwd_prep $handler actor _args ($($t,)*) <$type> $method)
     }};
-    ($handler:ident; <$type:ty>::$method:ident ( $cx:expr $(, $x:expr)* ) as ( $($t:ty),* )) => {{
-        let args = ( $($x,)* );
-        let actor = $cx.this().clone();
-        stakker::indices!([$(($x))*] [$(($t))*] generic_fwd_prep $handler actor args ($($t,)*) <$type> $method)
+    ($handler:ident; [$actor:expr], <$type:ty>::$method:ident ( $($x:expr),* ) as ( $($t:ty),* )) => {{
+        stakker::COVERAGE!(generic_fwd_2);
+        let actor = $actor.access_actor().clone();  // Expecting Actor or Cx ref
+        let _args = ( $($x,)* );
+        stakker::indices!([$(($x))*] [$(($t))*] generic_fwd_prep $handler actor _args ($($t,)*) <$type> $method)
     }};
-
-    // Calling other actors
-    ($handler:ident; [$actor:expr], $method:ident ( __ $(, $x:expr)* ) as ( $($t:ty),* )) => {{
-        let actor: stakker::Actor<_> = $actor.clone();
-        let args = ( $($x,)* );
-        stakker::indices!([$(($x))*] [$(($t))*] generic_fwd_ready $handler actor args ($($t,)*) $method)
+    // Calling closures
+    ($handler:ident; [$cx:expr], move |$this:ident, $cxid:ident, $arg:ident : $t:ty| $($body:tt)+) => {{
+        stakker::COVERAGE!(generic_fwd_3);
+        let cx: &mut stakker::Cx<'_, _> = $cx;  // Expecting Cx ref
+        let actor = cx.this().clone();
+        stakker::$handler!(ready actor;
+                           move |$this, $cxid, $arg: $t| $($body)*;
+                           std::compile_error!("`ret_to!` with a closure requires a single Option argument"))
     }};
-    ($handler:ident; [$actor:expr], $type:ident::$method:ident ( __ $(, $x:expr)* ) as ( $($t:ty),* )) => {{
-        let actor: stakker::Actor<_> = $actor.clone();
-        let args = ( $($x,)* );
-        stakker::indices!([$(($x))*] [$(($t))*] generic_fwd_prep $handler actor args ($($t,)*) <$type> $method)
-    }};
-    ($handler:ident; [$actor:expr], <$type:ty>::$method:ident ( __ $(, $x:expr)* ) as ( $($t:ty),* )) => {{
-        let actor: stakker::Actor<_> = $actor.clone();
-        let args = ( $($x,)* );
-        stakker::indices!([$(($x))*] [$(($t))*] generic_fwd_prep $handler actor args ($($t,)*) <$type> $method)
-    }};
-
-    // Closures
-    ($handler:ident; $cx:expr, |$this:ident, $cxid:ident, $arg:ident : $t:ty| $($body:tt)+) => {{
-        let actor = $cx.this().clone();
-        stakker::$handler!(ready actor |$this, $cxid, $arg: $t| $($body)*)
-    }};
-    ($handler:ident; $cx:expr, |$this:ident, $cxid:ident $(, $arg:ident : $t:ty)*| $($body:tt)+) => {{
-        let actor = $cx.this().clone();
-        stakker::$handler!(ready actor |$this, $cxid, ($($arg),*): ($($t),*)| $($body)*)
-    }};
-    ($handler:ident; $cx:expr, move |$this:ident, $cxid:ident, $arg:ident : $t:ty| $($body:tt)+) => {{
-        let actor = $cx.this().clone();
-        stakker::$handler!(ready actor move |$this, $cxid, $arg: $t| $($body)*)
-    }};
-    ($handler:ident; $cx:expr, move |$this:ident, $cxid:ident $(, $arg:ident : $t:ty)*| $($body:tt)+) => {{
-        let actor = $cx.this().clone();
-        stakker::$handler!(ready actor move |$this, $cxid, ($($arg),*): ($($t),*)| $($body)*)
-    }};
-
-    // Help for some invalid cases
-    ($handler:ident; [$actor:expr], $method:ident ( $z:expr $(, $x:expr)* ) as ( $($t:ty),* )) => {{
-        std::compile_error!("Expecting `__` as first argument of method");
-    }};
-    ($handler:ident; [$actor:expr], $type:ident::$method:ident ( $z:expr $(, $x:expr)* ) as ( $($t:ty),* )) => {{
-        std::compile_error!("Expecting `__` as first argument of method");
-    }};
-    ($handler:ident; [$actor:expr], <$type:ty>::$method:ident ( $z:expr $(, $x:expr)* ) as ( $($t:ty),* )) => {{
-        std::compile_error!("Expecting `__` as first argument of method");
+    ($handler:ident; [$cx:expr], move |$this:ident, $cxid:ident $(, $arg:ident : $t:ty)*| $($body:tt)+) => {{
+        stakker::COVERAGE!(generic_fwd_4);
+        let cx: &mut stakker::Cx<'_, _> = $cx;  // Expecting Cx ref
+        let actor = cx.this().clone();
+        stakker::$handler!(ready actor;
+                           move |$this, $cxid, ($($arg),*): ($($t),*)| $($body)*;
+                           std::compile_error!("`ret_to!` with a closure requires a single Option argument"))
     }};
 }
 #[doc(hidden)]
 #[macro_export]
 macro_rules! generic_fwd_ready {
-    ($handler:ident $actor:ident $args:ident ($t:ty,) $method:ident [$($xi:tt)*] [$($ti:tt)*]) => {
-        stakker::$handler!(ready $actor move |a, cx, m: $t| a.$method(cx $(, $args.$xi)* , m))
-    };
-    ($handler:ident $actor:ident $args:ident ($($t:ty,)*) $method:ident [$($xi:tt)*] [$($ti:tt)*]) => {
-        stakker::$handler!(ready $actor move |a, cx, m: ($($t,)*)| a.$method(cx $(, $args.$xi)* $(, m.$ti)*))
-    };
+    ($handler:ident $actor:ident $args:ident ($t:ty,) $method:ident [$($xi:tt)*] [$($ti:tt)*]) => {{
+        stakker::COVERAGE!(generic_fwd_5);
+        stakker::$handler!(ready $actor;
+                           move |a, cx, m: $t| a.$method(cx $(, $args.$xi)* , m);
+                           move |a, cx, m: Option<$t>| a.$method(cx $(, $args.$xi)* , m))
+    }};
+    ($handler:ident $actor:ident $args:ident ($($t:ty,)*) $method:ident [$($xi:tt)*] [$($ti:tt)*]) => {{
+        stakker::COVERAGE!(generic_fwd_6);
+        stakker::$handler!(ready $actor;
+                           move |a, cx, _m: ($($t,)*)| a.$method(cx $(, $args.$xi)* $(, _m.$ti)*);
+                           move |a, cx, m: Option<($($t,)*)>| a.$method(cx $(, $args.$xi)*, m))
+    }};
 }
 #[doc(hidden)]
 #[macro_export]
 macro_rules! generic_fwd_prep {
-    ($handler:ident $actor:ident $args:ident ($t:ty,) <$atyp:ty> $method:ident [$($xi:tt)*] [$($ti:tt)*]) => {
-        stakker::$handler!(prep $actor move |cx, m: $t| <$atyp>::$method(cx $(, $args.$xi)* , m))
-    };
-    ($handler:ident $actor:ident $args:ident ($($t:ty,)*) <$atyp:ty> $method:ident [$($xi:tt)*] [$($ti:tt)*]) => {
-        stakker::$handler!(prep $actor move |cx, m: ($($t,)*)| <$atyp>::$method(cx $(, $args.$xi)* $(, m.$ti)*))
-    };
+    ($handler:ident $actor:ident $args:ident ($t:ty,) <$atyp:ty> $method:ident [$($xi:tt)*] [$($ti:tt)*]) => {{
+        stakker::COVERAGE!(generic_fwd_7);
+        stakker::$handler!(prep $actor;
+                           move |cx, m: $t| <$atyp>::$method(cx $(, $args.$xi)* , m);
+                           move |cx, m: Option<$t>| <$atyp>::$method(cx $(, $args.$xi)* , m))
+    }};
+    ($handler:ident $actor:ident $args:ident ($($t:ty,)*) <$atyp:ty> $method:ident [$($xi:tt)*] [$($ti:tt)*]) => {{
+        stakker::COVERAGE!(generic_fwd_8);
+        stakker::$handler!(prep $actor;
+                           move |cx, _m: ($($t,)*)| <$atyp>::$method(cx $(, $args.$xi)* $(, _m.$ti)*);
+                           move |cx, m: Option<($($t,)*)>| <$atyp>::$method(cx $(, $args.$xi)*, m))
+    }};
 }
 
-/// Create a `Fwd` instance for actor calls
+/// Create a [`Fwd`] instance for actor calls
 ///
 /// The syntax is similar to that used for [`call!`], except that the
 /// call is followed by `as` and a tuple of argument types (which may
 /// be empty).  These types are the types of the arguments accepted by
-/// the `Fwd` instance when it is called, and which are appended to
+/// the [`Fwd`] instance when it is called, and which are appended to
 /// the argument list of the method call.  So each call to a method is
 /// made up of first the fixed arguments (if any) provided at the time
-/// the `Fwd` instance was created, followed by the variable arguments
-/// (if any) provided when the `Fwd` instance was called.  This must
+/// the [`Fwd`] instance was created, followed by the variable arguments
+/// (if any) provided when the [`Fwd`] instance was called.  This must
 /// match the signature of the method itself.
 ///
-/// `as` is used here because this is a standard Rust token and so
-/// `rustfmt` can format the code, although something like `with`
-/// would make more sense.
-///
-/// Note that a core reference is not required when creating a `Fwd`
-/// instance to call another actor.  However for consistency it is
-/// included as `__`, and a compilation error is generated if an
-/// actual argument is provided.
+/// `as` is used here because this is a standard Rust token that can
+/// introduce a tuple and so `rustfmt` can format the code, although
+/// something like `with` would make more sense.
 ///
 /// ```ignore
 /// // Forward to a method in this actor or in another actor
-/// fwd_to!(method(cx, arg1, arg2...) as (type1, type2...));
-/// fwd_to!([actorxx], method(__, arg1, arg2...) as (type1, type2...));
+/// fwd_to!([cx], method(arg1, arg2...) as (type1, type2...));
+/// fwd_to!([actorxx], method(arg1, arg2...) as (type1, type2...));
 ///
 /// // Forward to a method whilst in the 'Prep' state
-/// fwd_to!(Self::method(cx, arg1, arg2...) as (type1, type2...));
-/// fwd_to!(<path::Type>::method(cx, arg1, arg2...) as (type1, type2...));
-/// fwd_to!([actoryy], Type::method(__, arg1, arg2...) as (type1, type2...));
-/// fwd_to!([actorzz], <path::Type>::method(__, arg1, arg2...) as (type1, type2...));
+/// fwd_to!([cx], Self::method(arg1, arg2...) as (type1, type2...));
+/// fwd_to!([cx], <path::Type>::method(arg1, arg2...) as (type1, type2...));
+/// fwd_to!([actoryy], Type::method(arg1, arg2...) as (type1, type2...));
+/// fwd_to!([actorzz], <path::Type>::method(arg1, arg2...) as (type1, type2...));
 ///
 /// // Forward a call to inline code which refers to this actor.  In
 /// // this case the `Fwd` argument list is extracted from the closure
 /// // argument list and no `as` section is required.
-/// fwd_to!(cx, |this, cx, arg1: type1, arg2: type2...| { ...code... });
-/// fwd_to!(cx, move |this, cx, arg1: type1, arg2: type2...| { ...code... });
+/// fwd_to!([cx], move |this, cx, arg1: type1, arg2: type2...| ...code...);
 /// ```
 ///
 /// Implemented using [`Fwd::to_actor`] or [`Fwd::to_actor_prep`].
 ///
 /// [`Fwd::to_actor_prep`]: struct.Fwd.html#method.to_actor_prep
 /// [`Fwd::to_actor`]: struct.Fwd.html#method.to_actor
+/// [`Fwd`]: struct.Fwd.html
 /// [`call!`]: macro.call.html
 #[macro_export]
 macro_rules! fwd_to {
     ($($x:tt)*) => {{
+        stakker::COVERAGE!(fwd_to_0);
         stakker::generic_fwd!(fwd_to_aux; $($x)*)
     }}
 }
 #[doc(hidden)]
 #[macro_export]
 macro_rules! fwd_to_aux {
-    (ready $actor:ident $cb:expr) => {
+    (ready $actor:ident; $cb:expr; $cb2:expr) => {{
+        stakker::COVERAGE!(fwd_to_1);
         stakker::Fwd::to_actor($actor, $cb)
-    };
-    (prep $actor:ident $cb:expr) => {
+    }};
+    (prep $actor:ident; $cb:expr; $cb2:expr) => {{
+        stakker::COVERAGE!(fwd_to_2);
         stakker::Fwd::to_actor_prep($actor, $cb)
-    };
+    }};
 }
 
-/// Create a single-use `Fwd` instance for actor calls
-///
-/// The syntax is the same as for [`fwd_to!`].  The underlying closure
-/// is a `FnOnce`, and there is a runtime check that the instance is
-/// not called more than once.
-///
-/// ```ignore
-/// fwd_once_to!(...arguments-as-for-fwd-macro...);
-/// ```
-///
-/// Implemented using [`Fwd::to_actor_once`] or [`Fwd::to_actor_prep_once`].
-///
-/// [`Fwd::to_actor_once`]: struct.Fwd.html#method.to_actor_once
-/// [`Fwd::to_actor_prep_once`]: struct.Fwd.html#method.to_actor_prep_once
-/// [`fwd_to!`]: macro.fwd_to.html
-#[macro_export]
-macro_rules! fwd_once_to {
-    ($($x:tt)*) => {{
-        stakker::generic_fwd!(fwd_once_to_aux; $($x)*)
-    }}
-}
-#[doc(hidden)]
-#[macro_export]
-macro_rules! fwd_once_to_aux {
-    (ready $actor:ident $cb:expr) => {
-        stakker::Fwd::to_actor_once($actor, $cb)
-    };
-    (prep $actor:ident $cb:expr) => {
-        stakker::Fwd::to_actor_prep_once($actor, $cb)
-    };
-}
-
-/// Create a `Fwd` instance which panics when called
+/// Create a [`Fwd`] instance which panics when called
 ///
 /// ```ignore
 /// fwd_panic!(panic_msg)
@@ -728,36 +744,42 @@ macro_rules! fwd_once_to_aux {
 /// [`Fwd::panic`].
 ///
 /// [`Fwd::panic`]: struct.Fwd.html#method.panic
+/// [`Fwd`]: struct.Fwd.html
 #[macro_export]
 macro_rules! fwd_panic {
-    ($arg:expr) => {
+    ($arg:expr) => {{
+        stakker::COVERAGE!(fwd_panic_0);
         stakker::Fwd::panic($arg)
-    };
+    }};
 }
 
-/// Create a `Fwd` instance which performs an arbitrary action
+/// Create a [`Fwd`] instance which performs an arbitrary action
 ///
 /// The action is performed immediately at the point in the code where
 /// the message is forwarded.  So this is executed synchronously
 /// rather than asynchronously.  However it will normally be used to
-/// defer a call, since it doesn't have access to any actor, just
-/// `Core` and the message data.
+/// defer a call, since it doesn't have access to any actor, just the
+/// message data.  If it doesn't have an actor reference available, it
+/// will probably need to capture a [`Deferrer`] in the closure.
 ///
 /// ```ignore
-/// fwd_do!(|core, msg| ...);
+/// fwd_do!(|msg| ...);
 /// ```
 ///
 /// Implemented using [`Fwd::new`].
 ///
+/// [`Deferrer`]: struct.Deferrer.html
 /// [`Fwd::new`]: struct.Fwd.html#method.new
+/// [`Fwd`]: struct.Fwd.html
 #[macro_export]
 macro_rules! fwd_do {
-    ($cb:expr) => {
+    ($cb:expr) => {{
+        stakker::COVERAGE!(fwd_do_0);
         stakker::Fwd::new($cb)
-    };
+    }};
 }
 
-/// Create a `Fwd` instance which does nothing at all
+/// Create a [`Fwd`] instance which does nothing at all
 ///
 /// ```ignore
 /// fwd_nop!();
@@ -766,31 +788,235 @@ macro_rules! fwd_do {
 /// NOP means "no operation".  Implemented using [`Fwd::new`].
 ///
 /// [`Fwd::new`]: struct.Fwd.html#method.new
+/// [`Fwd`]: struct.Fwd.html
 #[macro_export]
 macro_rules! fwd_nop {
-    () => {
-        stakker::Fwd::new(|_, _| {})
-    };
+    () => {{
+        stakker::COVERAGE!(fwd_nop_0);
+        stakker::Fwd::new(|_| {})
+    }};
 }
 
-/// Create a `Fwd` instance which shuts down the event loop
+/// Create a [`Ret`] instance for actor calls
+///
+/// This is guaranteed to be called **exactly once**, even if dropped.
+/// The message is passed as `Some(msg)` if called normally, or as
+/// `None` if the [`Ret`] instance was dropped (e.g. if it couldn't be
+/// delivered somewhere).  The underlying closure is a `FnOnce`, so
+/// non-Copy types can be passed.  The syntax is the same as for
+/// [`fwd_to!`], and the message types are specified as normal.
+/// However the message is received in a single argument on the
+/// receiving method, either `Option<type>` for a single type, or else
+/// `Option<(type1, type2...)>`.
 ///
 /// ```ignore
-/// fwd_shutdown!();
+/// ret_to!(...arguments-as-for-fwd_to-macro...);
+/// ```
+///
+/// The closure form must use a single `Option` as above as the
+/// argument type, containing all the types passed from the [`Ret`].
+///
+/// Implemented using [`Ret::to_actor`] or [`Ret::to_actor_prep`].
+///
+/// [`Ret::to_actor_prep`]: struct.Ret.html#method.to_actor_prep
+/// [`Ret::to_actor`]: struct.Ret.html#method.to_actor
+/// [`Ret`]: struct.Ret.html
+/// [`fwd_to!`]: macro.fwd_to.html
+#[macro_export]
+macro_rules! ret_to {
+    ([$cx:expr], move |$this:ident, $cxid:ident, $arg:ident : Option<$t:ty>| $($body:tt)+) => {{
+        stakker::COVERAGE!(ret_to_0);
+        let cx: &mut stakker::Cx<'_, _> = $cx;  // Expecting Cx ref
+        let actor = cx.this().clone();
+        stakker::Ret::to_actor(actor, move |$this, $cxid, $arg: Option<$t>| $($body)*)
+    }};
+    // Closures not matching above will get caught below, giving a
+    // compilation error
+    ($($x:tt)*) => {{
+        stakker::COVERAGE!(ret_to_1);
+        stakker::generic_fwd!(ret_to_aux; $($x)*)
+    }}
+}
+#[doc(hidden)]
+#[macro_export]
+macro_rules! ret_to_aux {
+    (ready $actor:ident; $cb:expr; $cb2:expr) => {{
+        stakker::COVERAGE!(ret_to_2);
+        stakker::Ret::to_actor($actor, $cb2)
+    }};
+    (prep $actor:ident; $cb:expr; $cb2:expr) => {{
+        stakker::COVERAGE!(ret_to_3);
+        stakker::Ret::to_actor_prep($actor, $cb2)
+    }};
+}
+
+/// Create a [`Ret`] instance for actor calls, ignoring drops
+///
+/// This is guaranteed to be called **at most once**.  Dropping the
+/// [`Ret`] instance is ignored, unlike [`ret_to!`], so the message is
+/// passed through without an `Option` wrapper, just like [`fwd_to!`].
+/// The underlying closure is a `FnOnce`, so non-Copy types can be
+/// passed.  The syntax is the same as for [`fwd_to!`], and messages
+/// are received in exactly the same way in the target actor method.
+///
+/// ```ignore
+/// ret_some_to!(...arguments-as-for-fwd_to-macro...);
+/// ```
+///
+/// Implemented using [`Ret::some_to_actor`] or [`Ret::some_to_actor_prep`].
+///
+/// [`Ret::some_to_actor_prep`]: struct.Ret.html#method.some_to_actor_prep
+/// [`Ret::some_to_actor`]: struct.Ret.html#method.some_to_actor
+/// [`Ret`]: struct.Ret.html
+/// [`fwd_to!`]: macro.fwd_to.html
+/// [`ret_to!`]: macro.ret_to.html
+#[macro_export]
+macro_rules! ret_some_to {
+    ($($x:tt)*) => {{
+        stakker::COVERAGE!(ret_some_to_0);
+        stakker::generic_fwd!(ret_some_to_aux; $($x)*)
+    }}
+}
+#[doc(hidden)]
+#[macro_export]
+macro_rules! ret_some_to_aux {
+    (ready $actor:ident; $cb:expr; $cb2:expr) => {{
+        stakker::COVERAGE!(ret_some_to_1);
+        stakker::Ret::some_to_actor($actor, $cb)
+    }};
+    (prep $actor:ident; $cb:expr; $cb2:expr) => {{
+        stakker::COVERAGE!(ret_some_to_2);
+        stakker::Ret::some_to_actor_prep($actor, $cb)
+    }};
+}
+
+/// Create a [`Ret`] instance which performs an arbitrary action
+///
+/// The action is performed immediately at the point in the code where
+/// the message is returned.  So this is executed synchronously rather
+/// than asynchronously.  However it will normally be used to defer a
+/// call, since it doesn't have access to any actor, just the message
+/// data.  If it doesn't have an actor reference available, it will
+/// probably need to capture a [`Deferrer`] in the closure.
+///
+/// ```ignore
+/// ret_do!(|msg| ...);
+/// ```
+///
+/// Implemented using [`Ret::new`].
+///
+/// [`Deferrer`]: struct.Deferrer.html
+/// [`Ret::new`]: struct.Ret.html#method.new
+/// [`Ret`]: struct.Ret.html
+#[macro_export]
+macro_rules! ret_do {
+    ($cb:expr) => {{
+        stakker::COVERAGE!(ret_do_0);
+        stakker::Ret::new($cb)
+    }};
+}
+
+/// Create a [`Ret`] instance which performs an arbitrary action, ignoring drops
+///
+/// Like [`ret_some_to!`], this ignores the case of the [`Ret`] instance
+/// being dropped, so the message is received without the wrapping
+/// `Option`.  The action is performed immediately at the point in the
+/// code where the message is returned.  So this is executed
+/// synchronously rather than asynchronously.  However it will
+/// normally be used to defer a call, since it doesn't have access to
+/// any actor, just the message data.  If it doesn't have an actor
+/// reference available, it will probably need to capture a
+/// [`Deferrer`] in the closure.
+///
+/// ```ignore
+/// ret_some_do!(|msg| ...);
+/// ```
+///
+/// Implemented using [`Ret::new`].
+///
+/// [`Deferrer`]: struct.Deferrer.html
+/// [`Ret::new`]: struct.Ret.html#method.new
+/// [`Ret`]: struct.Ret.html
+/// [`ret_some_to!`]: macro.ret_some_to.html
+#[macro_export]
+macro_rules! ret_some_do {
+    ($cb:expr) => {{
+        stakker::COVERAGE!(ret_some_do_0);
+        stakker::Ret::new(move |m| {
+            if let Some(m) = m {
+                ($cb)(m);
+            }
+        })
+    }};
+}
+
+/// Create a [`Ret`] instance which panics when called
+///
+/// ```ignore
+/// ret_panic!(panic_msg)
+/// ```
+///
+/// Ignores the case where the [`Ret`] instance is dropped.  Argument
+/// will typically be a `String` or `&str`.  Note that this will
+/// receive and ignore any message type.  Implemented using
+/// [`Ret::panic`].
+///
+/// [`Ret::panic`]: struct.Ret.html#method.panic
+/// [`Ret`]: struct.Ret.html
+#[macro_export]
+macro_rules! ret_panic {
+    ($arg:expr) => {{
+        stakker::COVERAGE!(ret_panic_0);
+        stakker::Ret::panic($arg)
+    }};
+}
+
+/// Create a [`Ret`] instance which does nothing at all
+///
+/// ```ignore
+/// ret_nop!();
+/// ```
+///
+/// NOP means "no operation".  Implemented using [`Ret::new`].
+///
+/// [`Ret::new`]: struct.Ret.html#method.new
+/// [`Ret`]: struct.Ret.html
+#[macro_export]
+macro_rules! ret_nop {
+    () => {{
+        stakker::COVERAGE!(ret_nop_0);
+        stakker::Ret::new(|_| {})
+    }};
+}
+
+/// Create a [`Ret`] instance which shuts down the event loop
+///
+/// ```ignore
+/// ret_shutdown!(core);
 /// ```
 ///
 /// This can be used as the notify handler on an actor to shut down
 /// the event loop once that actor terminates.  The reason for the
 /// actor's failure is passed through, and can be recovered after loop
 /// termination using [`Core::shutdown_reason`].  See also
-/// [`Fwd::new`] and [`Core::shutdown`].
+/// [`Ret::new`] and [`Core::shutdown`].
 ///
 /// [`Core::shutdown_reason`]: struct.Core.html#method.shutdown_reason
 /// [`Core::shutdown`]: struct.Core.html#method.shutdown
-/// [`Fwd::new`]: struct.Fwd.html#method.new
+/// [`Ret::new`]: struct.Ret.html#method.new
+/// [`Ret`]: struct.Ret.html
 #[macro_export]
-macro_rules! fwd_shutdown {
-    () => {
-        stakker::Fwd::new(|c, m| c.shutdown(m))
-    };
+macro_rules! ret_shutdown {
+    ($core:expr) => {{
+        stakker::COVERAGE!(ret_shutdown_0);
+        let core = $core.access_core();
+        let deferrer = core.deferrer();
+        stakker::Ret::new(move |m| {
+            if let Some(cause) = m {
+                deferrer.defer(|s| s.shutdown(cause));
+            } else {
+                deferrer.defer(|s| s.shutdown(stakker::StopCause::Dropped));
+            }
+        })
+    }};
 }

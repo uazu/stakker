@@ -3,7 +3,7 @@ use crate::cell::cell::{ActorCellMaker, ActorCellOwner, ShareCellOwner};
 use crate::queue::FnOnceQueue;
 use crate::timers::Timers;
 use crate::waker::WakeHandlers;
-use crate::{ActorDied, Deferrer, FixedTimerKey, MaxTimerKey, MinTimerKey, Waker};
+use crate::{Deferrer, FixedTimerKey, MaxTimerKey, MinTimerKey, StopCause, Waker};
 use std::collections::VecDeque;
 use std::mem;
 use std::ops::{Deref, DerefMut};
@@ -14,31 +14,36 @@ use std::time::{Duration, Instant};
 /// It contains all the queues and timers, and controls access to the
 /// state of all the actors.  It also provides the interface to
 /// control all this from outside, i.e. the calls used by an event
-/// loop.  The `Stakker` instance itself is not accessible from actors
-/// due to borrowing restrictions.  It derefs to `&mut Core` (through
-/// auto-deref or `*stakker`).  [`Core`] is also accessible to actors
-/// through their [`Cx`] context reference.
+/// loop.  The [`Stakker`] instance itself is not accessible from
+/// actors due to borrowing restrictions.  It derefs to `&mut Core`
+/// (through auto-deref or `*stakker`).  [`Core`] is also accessible
+/// to actors through their [`Cx`] context reference.
 ///
 /// [`Core`]: struct.Core.html
 /// [`Cx`]: struct.Cx.html
+/// [`Stakker`]: struct.Stakker.html
 pub struct Stakker {
     pub(crate) core: Core,
     pub(crate) actor_owner: ActorCellOwner,
-    spare_queue: FnOnceQueue<Stakker>,
+    alt_main_queue: FnOnceQueue<Stakker>,
+    alt_lazy_queue: FnOnceQueue<Stakker>,
     recreate_queues_time: Instant,
 }
 
 impl Stakker {
-    /// Construct a `Stakker` instance.  Whether more than one
+    /// Construct a [`Stakker`] instance.  Whether more than one
     /// instance can be created in each process or thread depends on
     /// the [Cargo features](index.html#cargo-features) enabled.
+    ///
+    /// [`Stakker`]: struct.Stakker.html
     pub fn new(now: Instant) -> Self {
         // Do this first to get the uniqueness checks to fail early,
         let (actor_owner, actor_maker) = new_actor_cell_owner();
         Self {
             core: Core::new(now, actor_maker),
             actor_owner,
-            spare_queue: FnOnceQueue::new(),
+            alt_main_queue: FnOnceQueue::new(),
+            alt_lazy_queue: FnOnceQueue::new(),
             recreate_queues_time: now + Duration::from_secs(60),
         }
     }
@@ -81,10 +86,10 @@ impl Stakker {
         }
     }
 
-    /// Move time forward, expire any timers onto the defer queue,
-    /// then run defer and lazy queues until there is nothing
-    /// outstanding.  Returns `true` if there are idle items still to
-    /// run.
+    /// Move time forward, expire any timers onto the main
+    /// [`Deferrer`] queue, then run main and lazy queues until there
+    /// is nothing outstanding.  Returns `true` if there are idle
+    /// items still to run.
     ///
     /// If `idle` is true, then runs an item from the idle queue as
     /// well.  This should be set only if we've already run the queues
@@ -94,45 +99,60 @@ impl Stakker {
     /// Note: All actors should use `cx.now()` to get the time, which
     /// allows the entire system to be run in virtual time (unrelated
     /// to real time) if necessary.
+    ///
+    /// [`Deferrer`]: struct.Deferrer.html
     pub fn run(&mut self, now: Instant, idle: bool) -> bool {
-        if now > self.core.now {
-            self.core.now = now;
-            self.core.timers.advance(now, &mut self.core.queue);
-        }
-
         if idle {
-            if let Some(cb) = self.core.idle_queue.pop_front() {
+            if let Some(cb) = self.idle_queue.pop_front() {
                 cb(self);
             }
         }
 
-        // Re-use queues in an attempt to keep using the same memory,
-        // which is more cache-efficient.  However if there has been a
-        // big burst of activity, the queues might have grown huge.
-        // So periodically force the queues to be recreated.
-        let mut spare_queue = mem::replace(&mut self.spare_queue, FnOnceQueue::new());
+        // Swap between normal and alt queues in an attempt to keep
+        // using the same memory, which should be more cache-
+        // efficient.  However if there has been a big burst of
+        // activity, the queues might have grown huge.  So
+        // periodically force the queues to be recreated.
+        //
+        // It's necessary to swap out queues before executing them,
+        // because whilst executing, more items may be added to any of
+        // them.  (Also the borrow checker complains.)
+
+        // Run main queue and timers
+        let mut alt_main = mem::replace(&mut self.alt_main_queue, FnOnceQueue::new());
+        let mut alt_lazy = mem::replace(&mut self.alt_lazy_queue, FnOnceQueue::new());
+        self.core.deferrer.swap_queue(&mut alt_main);
+        if now > self.core.now {
+            self.core.now = now;
+            self.core.timers.advance(now, &mut alt_main);
+        }
+        alt_main.execute(self);
+
+        // Keep running main and lazy queues until exhaustion
         loop {
-            if !self.core.queue.is_empty() {
-                mem::swap(&mut self.core.queue, &mut spare_queue);
-                spare_queue.execute(self);
+            self.core.deferrer.swap_queue(&mut alt_main);
+            if !alt_main.is_empty() {
+                alt_main.execute(self);
                 continue;
             }
-            spare_queue = self.core.deferrer.replace_queue(spare_queue);
-            if !spare_queue.is_empty() {
-                spare_queue.execute(self);
+            mem::swap(&mut self.core.lazy_queue, &mut alt_lazy);
+            if !alt_lazy.is_empty() {
+                alt_lazy.execute(self);
                 continue;
             }
             break;
         }
+        self.alt_main_queue = alt_main;
+        self.alt_lazy_queue = alt_lazy;
 
         // Recreate the queues?  They will all be empty at this point.
         if now > self.recreate_queues_time {
-            spare_queue = FnOnceQueue::new();
-            self.core.queue = FnOnceQueue::new();
-            self.core.deferrer.replace_queue(FnOnceQueue::new());
+            self.alt_main_queue = FnOnceQueue::new();
+            self.alt_lazy_queue = FnOnceQueue::new();
+            self.core.lazy_queue = FnOnceQueue::new();
+            self.core.deferrer.set_queue(FnOnceQueue::new());
             self.recreate_queues_time = now + Duration::from_secs(60);
         }
-        self.spare_queue = spare_queue;
 
         !self.core.idle_queue.is_empty()
     }
@@ -232,19 +252,20 @@ impl DerefMut for Stakker {
 
 /// Core operations available from both [`Stakker`] and [`Cx`] objects
 ///
-/// Both `&mut Stakker` and `&mut Cx` dereference to `&mut Core`, so
-/// typically either of those can be used wherever `&mut Core` or
-/// `&Core` is required.
+/// Both [`Stakker`] and [`Cx`] references auto-dereference to a
+/// [`Core`] reference, so typically either of those can be used
+/// wherever a [`Core`] reference is required.
 ///
+/// [`Core`]: struct.Core.html
 /// [`Cx`]: struct.Cx.html
 /// [`Stakker`]: struct.Stakker.html
 pub struct Core {
     now: Instant,
-    queue: FnOnceQueue<Stakker>,
     deferrer: Deferrer,
+    lazy_queue: FnOnceQueue<Stakker>,
     idle_queue: VecDeque<Box<dyn FnOnce(&mut Stakker) + 'static>>,
     timers: Timers<Stakker>,
-    shutdown: Option<ActorDied>,
+    shutdown: Option<StopCause>,
     pub(crate) sharecell_owner: ShareCellOwner,
     pub(crate) actor_maker: ActorCellMaker,
     #[cfg(feature = "anymap")]
@@ -255,19 +276,19 @@ pub struct Core {
 
 impl Core {
     pub(crate) fn new(now: Instant, actor_maker: ActorCellMaker) -> Self {
-        let mut deferrer = Deferrer::new();
+        let deferrer = Deferrer::new();
         // Intentionally drop any queued items belonging to a previous
         // Stakker.  This is to align the behaviour between the three
         // Deferrer implementations, to avoid dependence on any one
         // behaviour.  (With the 'inline' Deferrer, each Stakker has
-        // its own Deferrer queue, but the other two share a queue
-        // between deferrers.)
-        drop(deferrer.replace_queue(FnOnceQueue::new()));
+        // its own Deferrer queue, but the other two use a global or
+        // thread-local which may have data from a previous Stakker.)
+        deferrer.set_queue(FnOnceQueue::new());
 
         Self {
             now,
-            queue: FnOnceQueue::new(),
             deferrer,
+            lazy_queue: FnOnceQueue::new(),
             idle_queue: VecDeque::new(),
             timers: Timers::new(now),
             shutdown: None,
@@ -289,11 +310,11 @@ impl Core {
     }
 
     /// Defer an operation to be executed later.  It is put on the
-    /// defer queue, and run as soon all operations preceding it have
+    /// main queue, and run as soon all operations preceding it have
     /// been executed.
     #[inline]
     pub fn defer(&mut self, f: impl FnOnce(&mut Stakker) + 'static) {
-        self.queue.push(f);
+        self.deferrer.defer(f);
     }
 
     /// Defer an operation to executed soon, but lazily.  It goes onto
@@ -304,7 +325,7 @@ impl Core {
     /// example.
     #[inline]
     pub fn lazy(&mut self, f: impl FnOnce(&mut Stakker) + 'static) {
-        self.deferrer.defer(f);
+        self.lazy_queue.push(f);
     }
 
     /// Defer an operation to be executed when this process next
@@ -347,36 +368,19 @@ impl Core {
         self.timers.del(key)
     }
 
-    /// Add or update a "Max" timer, which expires at the greatest
-    /// (latest) expiry time provided.  See [`MaxTimerKey`] for the
-    /// characteristics of this timer.  If the value in the
-    /// [`MaxTimerKey`] variable provided is no longer valid
-    /// (e.g. expired), creates a new timer using the given closure
-    /// and writes a [`MaxTimerKey`] value back to the variable.
-    /// Otherwise updates the given timer with the new time.  The
-    /// variable should be initialised using `MaxTimerKey::default()`.
-    /// The timer may be cancelled using [`Core::timer_max_del`].
-    ///
-    /// [`Core::timer_max_del`]: struct.Core.html#method.timer_max_del
-    /// [`MaxTimerKey`]: struct.MaxTimerKey.html
-    #[inline]
-    pub fn timer_max(
-        &mut self,
-        key_variable: &mut MaxTimerKey,
-        expiry: Instant,
-        f: impl FnOnce(&mut Stakker) + 'static,
-    ) {
-        if !self.timers.mod_max(*key_variable, expiry) {
-            *key_variable = self.timers.add_max(expiry, Box::new(f));
-        }
-    }
-
     /// Add a "Max" timer, which expires at the greatest (latest)
     /// expiry time provided.  See [`MaxTimerKey`] for the
     /// characteristics of this timer.  Returns a key that can be used
     /// to delete or modify the timer.
     ///
+    /// See also the [`timer_max!`] macro, which may be more
+    /// convenient as it combines [`Core::timer_max_add`] and
+    /// [`Core::timer_max_upd`].
+    ///
+    /// [`Core::timer_max_add`]: struct.Core.html#method.timer_max_add
+    /// [`Core::timer_max_upd`]: struct.Core.html#method.timer_max_upd
     /// [`MaxTimerKey`]: struct.MaxTimerKey.html
+    /// [`timer_max!`]: macro.timer_max.html
     #[inline]
     pub fn timer_max_add(
         &mut self,
@@ -393,8 +397,16 @@ impl Core {
     ///
     /// Returns `true` on success, `false` if timer no longer exists
     /// (i.e. it expired or was deleted)
+    ///
+    /// See also the [`timer_max!`] macro, which may be more
+    /// convenient as it combines [`Core::timer_max_add`] and
+    /// [`Core::timer_max_upd`].
+    ///
+    /// [`Core::timer_max_add`]: struct.Core.html#method.timer_max_add
+    /// [`Core::timer_max_upd`]: struct.Core.html#method.timer_max_upd
+    /// [`timer_max!`]: macro.timer_max.html
     #[inline]
-    pub fn timer_max_mod(&mut self, key: MaxTimerKey, expiry: Instant) -> bool {
+    pub fn timer_max_upd(&mut self, key: MaxTimerKey, expiry: Instant) -> bool {
         self.timers.mod_max(key, expiry)
     }
 
@@ -413,36 +425,19 @@ impl Core {
         self.timers.max_is_active(key)
     }
 
-    /// Add or update a "Min" timer, which expires at the smallest
-    /// (earliest) expiry time provided.  See [`MinTimerKey`] for the
-    /// characteristics of this timer.  If the value in the
-    /// [`MinTimerKey`] variable provided is no longer valid
-    /// (e.g. expired), creates a new timer using the given closure
-    /// and writes a [`MinTimerKey`] value back to the variable.
-    /// Otherwise updates the given timer with the new time.  The
-    /// variable should be initialised using `MinTimerKey::default()`.
-    /// The timer may be cancelled using [`Core::timer_min_del`].
-    ///
-    /// [`Core::timer_min_del`]: struct.Core.html#method.timer_min_del
-    /// [`MinTimerKey`]: struct.MinTimerKey.html
-    #[inline]
-    pub fn timer_min(
-        &mut self,
-        key_variable: &mut MinTimerKey,
-        expiry: Instant,
-        f: impl FnOnce(&mut Stakker) + 'static,
-    ) {
-        if !self.timers.mod_min(*key_variable, expiry) {
-            *key_variable = self.timers.add_min(expiry, Box::new(f));
-        }
-    }
-
     /// Add a "Min" timer, which expires at the smallest (earliest)
     /// expiry time provided.  See [`MinTimerKey`] for the
     /// characteristics of this timer.  Returns a key that can be used
     /// to delete or modify the timer.
     ///
+    /// See also the [`timer_min!`] macro, which may be more
+    /// convenient as it combines [`Core::timer_min_add`] and
+    /// [`Core::timer_min_upd`].
+    ///
+    /// [`Core::timer_min_add`]: struct.Core.html#method.timer_min_add
+    /// [`Core::timer_min_upd`]: struct.Core.html#method.timer_min_upd
     /// [`MinTimerKey`]: struct.MinTimerKey.html
+    /// [`timer_min!`]: macro.timer_min.html
     #[inline]
     pub fn timer_min_add(
         &mut self,
@@ -461,8 +456,16 @@ impl Core {
     ///
     /// Returns `true` on success, `false` if timer no longer exists
     /// (i.e. it expired or was deleted)
+    ///
+    /// See also the [`timer_min!`] macro, which may be more
+    /// convenient as it combines [`Core::timer_min_add`] and
+    /// [`Core::timer_min_upd`].
+    ///
+    /// [`Core::timer_min_add`]: struct.Core.html#method.timer_min_add
+    /// [`Core::timer_min_upd`]: struct.Core.html#method.timer_min_upd
+    /// [`timer_min!`]: macro.timer_min.html
     #[inline]
-    pub fn timer_min_mod(&mut self, key: MinTimerKey, expiry: Instant) -> bool {
+    pub fn timer_min_upd(&mut self, key: MinTimerKey, expiry: Instant) -> bool {
         self.timers.mod_min(key, expiry)
     }
 
@@ -504,15 +507,18 @@ impl Core {
 
     /// Request that the event loop terminate.  For this to work, the
     /// event loop must check [`Core::not_shutdown`] each time through
-    /// the loop.  See also the [`fwd_shutdown!`] macro which can be
-    /// used as the notify handler for an actor, to shut down the
-    /// event loop when that actor terminates.  The event loop code
-    /// can obtain the `ActorDied` instance using `shutdown_reason`.
+    /// the loop.  See also the [`ret_shutdown!`] macro which can be
+    /// used as the [`StopCause`] handler for an actor, to shut down
+    /// the event loop when that actor terminates.  The event loop
+    /// code can obtain the [`StopCause`] using
+    /// [`Core::shutdown_reason`].
     ///
     /// [`Core::not_shutdown`]: struct.Core.html#method.not_shutdown
-    /// [`fwd_shutdown!`]: macro.fwd_shutdown.html
-    pub fn shutdown(&mut self, died: ActorDied) {
-        self.shutdown = Some(died);
+    /// [`Core::shutdown_reason`]: struct.Core.html#method.shutdown_reason
+    /// [`StopCause`]: enum.StopCause.html
+    /// [`ret_shutdown!`]: macro.ret_shutdown.html
+    pub fn shutdown(&mut self, cause: StopCause) {
+        self.shutdown = Some(cause);
     }
 
     /// Should the event loop continue running?  Returns `true` if
@@ -523,17 +529,19 @@ impl Core {
 
     /// Get the reason for shutdown, if shutdown was requested.  After
     /// calling this, the shutdown flag is cleared,
-    /// i.e. `not_shutdown` will return `false` and the event loop
-    /// could continue to run.
-    pub fn shutdown_reason(&mut self) -> Option<ActorDied> {
+    /// i.e. [`Core::not_shutdown`] will return `false` and the event
+    /// loop could continue to run.
+    ///
+    /// [`Core::not_shutdown`]: struct.Core.html#method.not_shutdown
+    pub fn shutdown_reason(&mut self) -> Option<StopCause> {
         mem::replace(&mut self.shutdown, None)
     }
 
-    /// Get a [`Deferrer`] instance which can be used to defer calls
-    /// from contexts in the same thread which don't have access to
-    /// `Core`, for example drop handlers.  Calls submitted via a
-    /// `Deferrer` go onto the lazy queue.
+    /// Get a new [`Deferrer`] instance which can be used to defer
+    /// calls to the main queue from contexts in the same thread which
+    /// don't have access to [`Core`], for example drop handlers.
     ///
+    /// [`Core`]: struct.Core.html
     /// [`Deferrer`]: struct.Deferrer.html
     pub fn deferrer(&self) -> Deferrer {
         assert!(mem::size_of::<usize>() >= mem::size_of::<Deferrer>());
@@ -568,5 +576,21 @@ impl Core {
             panic!("Core::waker() called with no waker set up");
         }
         self.wake_handlers.add(cb)
+    }
+
+    /// Used in macros to get a [`Core`] reference
+    ///
+    /// [`Core`]: struct.Core.html
+    #[inline]
+    pub fn access_core(&mut self) -> &mut Core {
+        self
+    }
+
+    /// Used in macros to get a [`Deferrer`] reference
+    ///
+    /// [`Deferrer`]: struct.Deferrer.html
+    #[inline]
+    pub fn access_deferrer(&self) -> &Deferrer {
+        &self.deferrer
     }
 }

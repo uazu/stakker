@@ -1,16 +1,15 @@
-use crate::core::Core;
 use std::rc::Rc;
 
-pub(crate) struct FwdRc<M>(Rc<dyn Fn(&mut Core, M)>);
+pub(crate) struct FwdRc<M>(Rc<dyn Fn(M)>);
 
 impl<M> FwdRc<M> {
     #[inline]
-    pub fn new(val: impl Fn(&mut Core, M) + 'static) -> Self {
+    pub fn new(val: impl Fn(M) + 'static) -> Self {
         Self(Rc::new(val))
     }
 
     #[inline]
-    pub fn inner(&self) -> &dyn Fn(&mut Core, M) {
+    pub fn inner(&self) -> &dyn Fn(M) {
         &*self.0
     }
 }

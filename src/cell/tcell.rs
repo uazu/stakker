@@ -1,6 +1,5 @@
 // TCell-based cells
-use super::TCellOwner; // Make sure we get the protected one in testing
-use qcell::TCell;
+use qcell::{TCell, TCellOwner};
 
 pub(crate) struct ActorMarker;
 pub(crate) type ActorCell<T> = TCell<ActorMarker, T>;

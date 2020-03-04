@@ -1,6 +1,6 @@
 use crate::queue::FnOnceQueue;
 use crate::rc::ActorRc;
-use crate::{Core, Fwd, Stakker};
+use crate::{Core, Deferrer, Ret, Stakker};
 use std::error::Error;
 use std::fmt;
 use std::ops::{Deref, DerefMut};
@@ -8,20 +8,10 @@ use std::ops::{Deref, DerefMut};
 /// An owning ref-counting reference to an actor
 ///
 /// This not only keeps a reference to the actor, but it will also
-/// automatically terminate the actor when this reference is dropped.
-/// This means that typically actors have a single owner and form a
-/// simple ownership tree, like a tree of `Box` references in Rust.
-/// This only applies to "liveness", however.  Ref-counting references
-/// from elsewhere will cause an actor in the **Zombie** state to stay
-/// in memory until the final references are released.  However even
-/// if there are reference cycles between actors, they will get
-/// cleaned up because when the actor is terminated, all its
-/// references to other places are dropped on entering the **Zombie**
-/// state, breaking the cycles.
-///
-/// This dereferences to a normal [`Actor`] reference, so when
-/// `clone()` is called on it, a normal non-owning reference results.
-/// Use `clone_own()` to get another owning reference.
+/// automatically terminate the actor when the last owning reference
+/// is dropped.  This dereferences to a normal [`Actor`] reference, so
+/// when `.clone()` is called on it, a normal non-owning reference
+/// results.  To get another owning reference, use `.owned()`.
 ///
 /// [`Actor`]: struct.Actor.html
 pub struct ActorOwn<A: 'static> {
@@ -31,35 +21,30 @@ pub struct ActorOwn<A: 'static> {
 impl<A: 'static> ActorOwn<A> {
     /// Create a new uninitialised actor of the given type.  This is
     /// in the **Prep** state.  The reference can be cloned and passed
-    /// around and used to create `Fwd` instances.  However all calls
-    /// to be actor will be delayed until the actor moves into the
-    /// **Ready** state.
+    /// around and used to create [`Fwd`] or [`Ret`] instances.
+    /// However all calls to be actor will be delayed until the actor
+    /// moves into the **Ready** state.
     ///
-    /// The `notify` argument allows a notification of actor
-    /// termination to be received by the owning actor.
+    /// `notify` is the [`StopCause`] return, which is called when the
+    /// actor terminates.
     ///
     /// See macros [`actor!`] and [`actor_new!`] for help with
     /// creating and initialising actors.
     ///
+    /// [`Fwd`]: struct.Fwd.html
+    /// [`Ret`]: struct.Ret.html
+    /// [`StopCause`]: enum.StopCause.html
     /// [`actor!`]: macro.actor.html
     /// [`actor_new!`]: macro.actor_new.html
-    #[inline]
-    pub fn new(core: &mut Core, notify: Fwd<ActorDied>) -> Self {
-        Self {
-            actor: Actor {
-                rc: ActorRc::new(core, Some(notify)),
-            },
-        }
+    pub fn new(core: &mut Core, notify: Ret<StopCause>) -> ActorOwn<A> {
+        Self::construct(Actor {
+            rc: ActorRc::new(core, Some(notify)),
+        })
     }
 
-    /// Make another owning reference.  Note that the actor will be
-    /// terminated if either this or the returned reference is
-    /// dropped.  Use plain `clone()` if you want a non-owning
-    /// reference.
-    pub fn clone_own(&self) -> Self {
-        Self {
-            actor: self.actor.clone(),
-        }
+    fn construct(actor: Actor<A>) -> Self {
+        actor.rc.strong_inc();
+        Self { actor }
     }
 }
 
@@ -79,21 +64,23 @@ impl<A: 'static> DerefMut for ActorOwn<A> {
 
 impl<A: 'static> Drop for ActorOwn<A> {
     fn drop(&mut self) {
-        let actor = self.actor.clone();
-        self.actor
-            .lazy(move |s| actor.terminate(s, ActorDied::Dropped));
+        let went_to_zero = self.actor.rc.strong_dec();
+        if went_to_zero {
+            let actor = self.actor.clone();
+            self.actor
+                .defer(move |s| actor.terminate(s, StopCause::Dropped));
+        }
     }
 }
 
 /// A ref-counting reference to an actor
 ///
 /// This may be cloned to get another reference to the same actor.
-/// See [`ActorOwn`] to create an actor.
 ///
 /// # Example implementation of an minimal actor
 ///
 /// ```
-///# use stakker::{call, Cx, Fwd};
+///# use stakker::{call, Cx, Ret, ret};
 /// struct Light {
 ///     on: bool,
 /// }
@@ -104,8 +91,8 @@ impl<A: 'static> Drop for ActorOwn<A> {
 ///     pub fn set(&mut self, _cx: &mut Cx<'_, Self>, on: bool) {
 ///         self.on = on;
 ///     }
-///     pub fn get(&self, cx: &mut Cx<'_, Self>, mut fwd: Fwd<bool>) {
-///         call!([fwd], cx, self.on);
+///     pub fn get(&self, cx: &mut Cx<'_, Self>, ret: Ret<bool>) {
+///         ret!([ret], self.on);
 ///     }
 /// }
 /// ```
@@ -123,12 +110,12 @@ impl<A: 'static> Drop for ActorOwn<A> {
 /// **"Prep" state**: As soon as [`ActorOwn::new`] returns, the actor
 /// exists and is in the **Prep** state.  It has an actor reference,
 /// but it does not yet have a `self` value.  It is possible to create
-/// `Fwd` instances referring to methods in this actor, and to pass
-/// the actor reference to other actors.  However any normal actor
-/// calls will be queued up until the actor becomes ready.  The only
-/// calls that are permitted on the actor in the **Prep** state are
-/// calls to static methods with the signature `fn method(cx: &mut
-/// Cx<'_, Self>, ...) -> Option<Self>`.
+/// [`Fwd`] or [`Ret`] instances referring to methods in this actor,
+/// and to pass the actor reference to other actors.  However any
+/// normal actor calls will be queued up until the actor becomes
+/// ready.  The only calls that are permitted on the actor in the
+/// **Prep** state are calls to static methods with the signature `fn
+/// method(cx: CX![], ...) -> Option<Self>`.
 ///
 /// A call should be made to one of the static methods on the actor to
 /// start the process of initialising it.  Initialisation may be
@@ -144,11 +131,10 @@ impl<A: 'static> Drop for ActorOwn<A> {
 /// whilst it was in the **Prep** state are flushed and executed at
 /// this point.  Whilst in the **Ready** state, the actor can only
 /// execute calls to methods with the signature `fn method(&mut self,
-/// cx: &mut Cx<'_, Self>, ...)`, or the same with `&self`.  Any
-/// **Prep**-style calls will be dropped.  Now deferred calls from
-/// timers or other actors will execute immediately on reaching the
-/// front of the queue.  This is the normal operating mode of the
-/// actor.
+/// cx: CX![], ...)`, or the same with `&self`.  Any **Prep**-style
+/// calls will be dropped.  Now deferred calls from timers or other
+/// actors will execute immediately on reaching the front of the
+/// queue.  This is the normal operating mode of the actor.
 ///
 /// **"Zombie" state**: The **Zombie** state can be entered for
 /// various reasons.  The first is normal shutdown of the actor
@@ -156,26 +142,57 @@ impl<A: 'static> Drop for ActorOwn<A> {
 /// actor through the [`Cx::fail`] or [`Cx::fail_str`] methods.  The
 /// third is through being killed externally through the
 /// [`Actor::kill`] or [`Actor::kill_str`] methods.  Termination of
-/// the actor will be notified to the ancestor actor if a notification
-/// handler was passed to the [`ActorOwn::new`] method.  (Note that if
-/// the last reference to the actor is dropped, the actor will be
-/// dropped without entering the **Zombie** state.)
+/// the actor is notified to the [`StopCause`] handler provided to the
+/// [`ActorOwn::new`] method when the actor was created.  (If the last
+/// reference to the actor is dropped, the actor will be terminated
+/// without entering the **Zombie** state.)
 ///
 /// Once an actor is a **Zombie** it never leaves that state.  The
 /// `self` value is dropped and all resources are released.
 /// References remain valid until the last reference is dropped, but
-/// the `Actor::is_zombie` method will return true.  Any calls queued
-/// for the actor will be dropped.  (Note that if you need to have a
-/// very long-lived actor but you also need to restart the actor on
-/// failure, consider having one actor wrap another.)
+/// the [`Actor::is_zombie`] method will return true.  Any calls
+/// queued for the actor will be dropped.  (Note that if you need to
+/// have a very long-lived actor but you also need to restart the
+/// actor on failure, consider having one actor wrap another.)
 ///
+///
+/// # Ownership of an actor and automatic termination on drop
+///
+/// There are two forms of reference to an actor: [`ActorOwn`]
+/// instances are strong references, and [`Actor`], [`Fwd`] and
+/// [`Ret`] instances are weak references.  When the last [`ActorOwn`]
+/// reference is dropped, the actor will be terminated automatically.
+/// After termination, the actor `self` state data is dropped, but the
+/// actor stays in memory in the **Zombie** state until the final weak
+/// references are dropped.
+///
+/// The normal approach is to use [`ActorOwn`] references to control
+/// the termination of the actor.  If the coder ensures that there are
+/// no cycles in the [`ActorOwn`] graph (e.g. it is a simple tree),
+/// then cleanup is safe and straightforward even in the presence of
+/// [`Actor`], [`Fwd`] or [`Ret`] reference cycles.
+///
+/// This also handles the case where many actors reference a common
+/// actor so long as there are no [`ActorOwn`] back-references.  The
+/// common actor will only be terminated when the last [`ActorOwn`]
+/// reference is dropped.
+///
+/// However if necessary other termination strategies are possible,
+/// since the actor can be terminated externally using the
+/// [`Actor::kill`] call.
+///
+/// [`Actor::is_zombie`]: struct.Actor.html#method.is_zombie
 /// [`Actor::kill_str`]: struct.Actor.html#method.kill_str
 /// [`Actor::kill`]: struct.Actor.html#method.kill
 /// [`ActorOwn::new`]: struct.ActorOwn.html#method.new
 /// [`ActorOwn`]: struct.ActorOwn.html
+/// [`Actor`]: struct.Actor.html
 /// [`Cx::fail_str`]: struct.Cx.html#method.fail_str
 /// [`Cx::fail`]: struct.Cx.html#method.fail
 /// [`Cx::stop`]: struct.Cx.html#method.stop
+/// [`Fwd`]: struct.Fwd.html
+/// [`Ret`]: struct.Ret.html
+/// [`StopCause`]: enum.StopCause.html
 pub struct Actor<A: 'static> {
     rc: ActorRc<A>,
 }
@@ -199,7 +216,23 @@ pub(crate) struct Prep {
 }
 
 impl<A> Actor<A> {
-    /// Check whether the pointed-to actor is a zombie
+    /// Create an additional owning reference to this actor.  When the
+    /// last owning reference is dropped, the actor is terminated,
+    /// even when there are other references active.
+    pub fn owned(&self) -> ActorOwn<A> {
+        ActorOwn::construct(self.clone())
+    }
+
+    /// Check whether the actor is a zombie.  Note that this call is
+    /// less useful than it appears, since the actor may become a
+    /// zombie between the time you make this call and whatever
+    /// asynchronous operation follows.  It is better to make a call
+    /// with a [`ret_to!`] callback which will send back a `None` if
+    /// the actor has died or if the actor drops the [`Ret`] for any
+    /// other reason.
+    ///
+    /// [`Ret`]: struct.Ret.html
+    /// [`ret_to!`]: macro.ret_to.html
     pub fn is_zombie(&self) -> bool {
         self.rc.is_zombie()
     }
@@ -212,34 +245,35 @@ impl<A> Actor<A> {
         self.rc.to_ready(s, val);
     }
 
-    /// Kill actor, moving to **Zombie** state and dropping contained
-    /// value if any.  The actor can never return from the **Zombie**
-    /// state.  The provided error is used to generate an
-    /// `ActorDied::Killed` instance, which is passed to the notify
-    /// `Fwd`.
+    /// Kill actor, moving to **Zombie** state and dropping the
+    /// contained actor `Self` value.  The actor can never return from
+    /// the **Zombie** state.  The provided error is used to generate
+    /// an `StopCause::Killed` instance, which is passed to the
+    /// [`StopCause`] handler set up when the actor was created.
+    ///
+    /// [`StopCause`]: enum.StopCause.html
     pub fn kill(&self, s: &mut Stakker, err: Box<dyn Error>) {
-        self.terminate(s, ActorDied::Killed(err));
+        self.terminate(s, StopCause::Killed(err));
     }
 
-    /// Kill actor, moving to **Zombie** state and dropping contained
-    /// value if any.  The actor can never return from the **Zombie**
-    /// state.  The provided error string is used to generate an
-    /// `ActorDied::Killed` instance, which is passed to the notify
-    /// `Fwd`.
+    /// Kill actor, moving to **Zombie** state and dropping the
+    /// contained actor `Self` value.  The actor can never return from
+    /// the **Zombie** state.  The provided error string is used to
+    /// generate an `StopCause::Killed` instance, which is passed to
+    /// the [`StopCause`] handler set up when the actor was created.
+    ///
+    /// [`StopCause`]: enum.StopCause.html
     pub fn kill_str(&self, s: &mut Stakker, err: impl Into<String>) {
-        self.terminate(s, ActorDied::Killed(Box::new(StringError(err.into()))));
+        self.terminate(s, StopCause::Killed(Box::new(StringError(err.into()))));
     }
 
     // Terminate actor, moving to **Zombie** state and dropping
     // contained value if any.  The actor can never return from the
-    // **Zombie** state.  If `died` is not `ActorDied::Dropped`, sends
-    // it to the notify `Fwd` set up when the actor was created.
-    fn terminate(&self, s: &mut Stakker, died: ActorDied) {
+    // **Zombie** state.  The `died` value is sent to the
+    // [`StopCause`] handler set up when the actor was created.
+    fn terminate(&self, s: &mut Stakker, died: StopCause) {
         if let Some(notify) = self.rc.to_zombie(s) {
-            match died {
-                ActorDied::Dropped => (),
-                _ => notify.fwd(s, died),
-            }
+            notify.ret(died);
         }
     }
 
@@ -279,12 +313,31 @@ impl<A> Actor<A> {
         }
     }
 
-    // This is used when terminating an actor from a drop handler.  We
-    // could expose it as `pub`, but there doesn't seem to be another
-    // use for it just now.
+    /// This may be used to submit items to the [`Deferrer`] main
+    /// queue from a drop handler, without needing a [`Core`]
+    /// reference.
+    ///
+    /// [`Core`]: struct.Core.html
+    /// [`Deferrer`]: struct.Deferrer.html
     #[inline]
-    fn lazy(&self, f: impl FnOnce(&mut Stakker) + 'static) {
-        self.rc.defer(f);
+    pub fn defer(&self, f: impl FnOnce(&mut Stakker) + 'static) {
+        self.rc.access_deferrer().defer(f);
+    }
+
+    /// Used in macros to get a [`Deferrer`] reference
+    ///
+    /// [`Deferrer`]: struct.Deferrer.html
+    #[inline]
+    pub fn access_deferrer(&self) -> &Deferrer {
+        self.rc.access_deferrer()
+    }
+
+    /// Used in macros to get an [`Actor`] reference
+    ///
+    /// [`Actor`]: struct.Actor.html
+    #[inline]
+    pub fn access_actor(&self) -> &Self {
+        self
     }
 }
 
@@ -297,11 +350,11 @@ impl<A> Clone for Actor<A> {
 }
 
 /// Indicates reason for actor termination
-pub enum ActorDied {
+pub enum StopCause {
     /// Actor terminated using [`Cx::stop`]
     ///
     /// [`Cx::stop`]: struct.Cx.html#method.stop
-    Ended,
+    Stopped,
 
     /// Actor failed using [`Cx::fail`]
     ///
@@ -313,14 +366,25 @@ pub enum ActorDied {
     /// [`Actor::kill`]: struct.Actor.html#method.kill
     Killed(Box<dyn Error>),
 
-    /// ActorOwn instance was dropped
+    /// Last owning reference to the actor was dropped
     Dropped,
 }
 
-impl std::fmt::Display for ActorDied {
+impl StopCause {
+    /// Test whether this the actor died with an associated error,
+    /// i.e. `Failed` or `Killed`.
+    pub fn has_error(&self) -> bool {
+        match self {
+            StopCause::Failed(_) | StopCause::Killed(_) => true,
+            _ => false,
+        }
+    }
+}
+
+impl std::fmt::Display for StopCause {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Ended => write!(f, "Actor terminated normally"),
+            Self::Stopped => write!(f, "Actor stopped"),
             Self::Failed(e) => write!(f, "Actor failed: {}", e),
             Self::Killed(e) => write!(f, "Actor was killed: {}", e),
             Self::Dropped => write!(f, "Actor was dropped"),
@@ -330,15 +394,21 @@ impl std::fmt::Display for ActorDied {
 
 /// Context for an actor call
 ///
-/// Gives access to `Core` through auto-deref or `*cx`.  Also allows
-/// stopping the actor with `stop` (successful termination) and
-/// aborting the actor with `fail` or `fail_str` (failure with an
-/// error).  A reference to the current actor is available through
-/// `this()`.
+/// Gives access to [`Core`] through auto-deref or `*cx`.  Also allows
+/// stopping the actor with [`Cx::stop`] (successful termination) and
+/// aborting the actor with [`Cx::fail`] or [`Cx::fail_str`] (failure
+/// with an error).  A reference to the current actor is available
+/// through [`Cx::this`].
+///
+/// [`Core`]: struct.Core.html
+/// [`Cx::fail_str`]: struct.Cx.html#method.fail_str
+/// [`Cx::fail`]: struct.Cx.html#method.fail
+/// [`Cx::stop`]: struct.Cx.html#method.stop
+/// [`Cx::this`]: struct.Cx.html#method.this
 pub struct Cx<'a, A: 'static> {
     pub(crate) core: &'a mut Core,
     pub(crate) this: &'a Actor<A>,
-    pub(crate) die: Option<ActorDied>,
+    pub(crate) die: Option<StopCause>,
 }
 
 impl<'a, A> Cx<'a, A> {
@@ -361,30 +431,44 @@ impl<'a, A> Cx<'a, A> {
     /// currently-running actor call finishes, the actor will be
     /// terminated.  Actor state will be dropped, and any further
     /// calls to this actor will be discarded.  The termination status
-    /// is passed back to the notify handler provided when the actor
-    /// was created.
+    /// is passed back to the [`StopCause`] handler provided when the
+    /// actor was created.
+    ///
+    /// [`StopCause`]: enum.StopCause.html
     pub fn stop(&mut self) {
-        self.die = Some(ActorDied::Ended);
+        self.die = Some(StopCause::Stopped);
     }
 
     /// Indicate failure of the actor.  As soon as the
     /// currently-running actor call finishes, the actor will be
     /// terminated.  Actor state will be dropped, and any further
     /// calls to this actor will be discarded.  The termination status
-    /// is passed back to the notify handler provided when the actor
-    /// was created.
+    /// is passed back to the [`StopCause`] handler provided when the
+    /// actor was created.
+    ///
+    /// [`StopCause`]: enum.StopCause.html
     pub fn fail(&mut self, e: impl Error + 'static) {
-        self.die = Some(ActorDied::Failed(Box::new(e)));
+        self.die = Some(StopCause::Failed(Box::new(e)));
     }
 
     /// Indicate failure of the actor.  As soon as the
     /// currently-running actor call finishes, the actor will be
     /// terminated.  Actor state will be dropped, and any further
     /// calls to this actor will be discarded.  The termination status
-    /// is passed back to the notify handler provided when the actor
-    /// was created.
+    /// is passed back to the [`StopCause`] handler provided when the
+    /// actor was created.
+    ///
+    /// [`StopCause`]: enum.StopCause.html
     pub fn fail_str(&mut self, e: impl Into<String>) {
-        self.die = Some(ActorDied::Failed(Box::new(StringError(e.into()))));
+        self.die = Some(StopCause::Failed(Box::new(StringError(e.into()))));
+    }
+
+    /// Used in macros to get an [`Actor`] reference
+    ///
+    /// [`Actor`]: struct.Actor.html
+    #[inline]
+    pub fn access_actor(&self) -> &Actor<A> {
+        self.this
     }
 }
 
