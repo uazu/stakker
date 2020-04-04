@@ -101,9 +101,9 @@ impl A {
     fn fwd_test(&mut self, cx: CX![], si1: ScoreInc, si2: ScoreInc, si3: ScoreInc) {
         let fwd = fwd_to!([cx], check() as (ScoreInc));
         fwd!([fwd], si1);
-        let fwd = fwd_to!([cx], move |_this, _cx, si: ScoreInc| SCORE!(si));
+        let fwd = fwd_to!([cx], |_this, _cx, si: ScoreInc| SCORE!(si));
         fwd!([fwd], si2);
-        let fwd = fwd_to!([cx], move |_this, _cx, si: ScoreInc, v: u8| {
+        let fwd = fwd_to!([cx], |_this, _cx, si: ScoreInc, v: u8| {
             assert_eq!(v, 99);
             SCORE!(si);
         });
@@ -134,7 +134,7 @@ impl A {
         assert_eq!(rv, Some(123));
         call!(
             [b],
-            get(ret_to!([cx], move |_this, _cx, rv: Option<u8>| {
+            get(ret_to!([cx], |_this, _cx, rv: Option<u8>| {
                 assert_eq!(rv, Some(123));
                 SCORE!(si);
             }))
@@ -159,7 +159,7 @@ impl A {
         assert_eq!(rv, 123);
         call!(
             [b],
-            get(ret_some_to!([cx], move |_this, _cx, rv: u8| {
+            get(ret_some_to!([cx], |_this, _cx, rv: u8| {
                 assert_eq!(rv, 123);
                 SCORE!(si);
             }))
@@ -182,7 +182,7 @@ impl B {
     }
     fn test(&mut self, cx: CX![], si: ScoreInc) {
         // Test inline closure
-        call!([cx], move |this, cx| {
+        call!([cx], |this, cx| {
             this.test2(cx, si);
         });
     }
@@ -202,7 +202,8 @@ impl B {
 
 struct C(u8, u16);
 impl C {
-    fn init(cx: CX![], v1: u8, v2: u16) -> Option<Self> {
+    // Test calling something other than `init` from actor!
+    fn init1(cx: CX![], v1: u8, v2: u16) -> Option<Self> {
         // Test path form of Prep call to same actor
         call!([cx], <crate::test::macros::C>::init2(v2, v1));
         None
@@ -231,7 +232,7 @@ impl C {
         SCORE!(si);
     }
     fn fwd_init(cx: CX![], v1: u8, v2: u16) -> Option<Self> {
-        let fwd = fwd_to!([cx], <C>::init() as (u8, u16));
+        let fwd = fwd_to!([cx], <C>::init1() as (u8, u16));
         fwd!([fwd], v1, v2);
         None
     }
@@ -249,7 +250,7 @@ fn creation_call_and_response() {
     let b = actor!(s, B::init(123), ret_panic!("Actor B died"));
     let c = actor!(
         s,
-        <crate::test::macros::C>::init(123, 23456),
+        <crate::test::macros::C>::init1(123, 23456),
         ret_panic!("Actor C died")
     );
 
@@ -302,7 +303,7 @@ fn actor_calls() {
     // Test all forms of Prep call to another actor
     call!([a], A::init());
     call!([b], <B>::init(159));
-    call!([c], <crate::test::macros::C>::init(159, 54321));
+    call!([c], <crate::test::macros::C>::init1(159, 54321));
 
     // Test some chained calls
     call!([b], test(aux.si()));
@@ -310,7 +311,7 @@ fn actor_calls() {
 
     // Test Stakker closure call
     let si = aux.si();
-    call!([s], move |_s| SCORE!(si));
+    call!([s], |_s| SCORE!(si));
 
     aux.run(s);
     aux.check_scores();
@@ -328,7 +329,7 @@ fn lazy_prep_calls() {
 
     lazy!([a, s], A::init());
     lazy!([b, s], <B>::init(159));
-    lazy!([c, s], <crate::test::macros::C>::init(159, 54321));
+    lazy!([c, s], <crate::test::macros::C>::init1(159, 54321));
 
     // These will also get delayed and queued on the actor until it
     // goes to Ready (which executes on the lazy queue)
@@ -396,7 +397,7 @@ fn fwds() {
     fwd!([fwd]);
     let fwd = fwd_to!([b], <B>::init() as (u8));
     fwd!([fwd], 159);
-    let fwd = fwd_to!([c], <crate::test::macros::C>::init(159) as (u16));
+    let fwd = fwd_to!([c], <crate::test::macros::C>::init1(159) as (u16));
     fwd!([fwd], 54321);
 
     // Self-based fwd tested in A

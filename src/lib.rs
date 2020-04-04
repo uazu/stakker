@@ -263,8 +263,8 @@
 //!         println!("{:04}.{:03} Light on: {}", time.as_secs(), time.subsec_millis(), on);
 //!     }
 //!
-//!     // A `Fwd` instance allows forwarding data to arbitrary
-//!     // destinations, like an async callback.
+//!     // A `Fwd` or `Ret` allows passing data to arbitrary destinations,
+//!     // like an async callback.  Here we use it to return a value.
 //!     pub fn query(&self, cx: CX![], ret: Ret<bool>) {
 //!         ret!([ret], self.on);
 //!     }
@@ -408,7 +408,7 @@
 //!
 //! The way this works is that if there are idle queue items pending,
 //! then `next_wait_max` returns 0s, which means that the `poll` call
-//! only checks for new I/O events without blocking.  If there is no
+//! only checks for new I/O events without blocking.  If there are no
 //! new events (`activity` is false), then an item from the idle queue
 //! is run.
 //!
@@ -441,6 +441,9 @@
 #![deny(rust_2018_idioms)]
 // No unsafe code is allowed anywhere if no-unsafe is set
 #![cfg_attr(feature = "no-unsafe", forbid(unsafe_code))]
+
+// TODO: Illustrate Fwd in the tutorial example, e.g. make println!
+// output go via a Fwd
 
 // TODO: Switch to [cx].method maybe?  Takes up less space with
 // rustfmt, but sometimes wraps strangely

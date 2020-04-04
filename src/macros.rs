@@ -115,7 +115,7 @@ macro_rules! actor {
         let notify = $notify;
         let core = $core.access_core();
         let actor = stakker::ActorOwn::<$type>::new(core, notify);
-        stakker::call!([actor], <$type>::init($($x),*));
+        stakker::call!([actor], <$type>::$init($($x),*));
         actor
     }};
     ($core:expr, <$type:ty> :: $init:ident($($x:expr),*), $notify:expr) => {{
@@ -123,7 +123,7 @@ macro_rules! actor {
         let notify = $notify;
         let core = $core.access_core();
         let actor = stakker::ActorOwn::<$type>::new(core, notify);
-        stakker::call!([actor], <$type>::init($($x),*));
+        stakker::call!([actor], <$type>::$init($($x),*));
         actor
     }};
 }
@@ -161,7 +161,7 @@ macro_rules! actor_new {
 #[macro_export]
 macro_rules! generic_call {
     ($handler:ident $hargs:tt $access:ident;
-     [$cx:expr], move |$this:ident, $cxid:ident| $body:expr) => {{
+     [$cx:expr], |$this:ident, $cxid:ident| $body:expr) => {{
          stakker::COVERAGE!(generic_call_0);
          let cb = move |$this: &mut Self, $cxid: &mut stakker::Cx<'_, Self>| $body;
          let cx: &mut stakker::Cx<'_, Self> = $cx;  // Expecting Cx<Self> ref
@@ -170,11 +170,15 @@ macro_rules! generic_call {
          stakker::$handler!($hargs core; move |s| this.apply(s, cb));
      }};
     ($handler:ident $hargs:tt $access:ident;
-     [$core:expr], move |$stakker:ident| $body:expr) => {{
+     [$core:expr], |$stakker:ident| $body:expr) => {{
          stakker::COVERAGE!(generic_call_1);
          let core = $core.access_core();  // Expecting Core, Cx or Stakker ref
          let cb = move |$stakker : &mut stakker::Stakker| $body;
          stakker::$handler!($hargs core; cb);
+     }};
+    ($handler:ident $hargs:tt $access:ident;
+     [$cx:expr], move | $($x:tt)*) => {{
+        std::compile_error!("Do not add `move` to closures as they get an implicit `move` anyway");
      }};
     // All remaining [actor] turned to [actor, actor]
     ($handler:ident $hargs:tt $access:ident;
@@ -261,9 +265,9 @@ macro_rules! generic_call_prep {
 /// call!([actoryy], Type::method(arg1, arg2...));
 /// call!([actorzz], <path::Type>::method(arg1, arg2...));
 ///
-/// // Defer a call to inline code
-/// call!([cx], move |this, cx| ...code...);   // Inline code which refers to this actor
-/// call!([core], move |stakker| ...code...);  // Generic inline code (`&mut Stakker` arg)
+/// // Defer a call to inline code.  Closure is always treated as a `move` closure
+/// call!([cx], |this, cx| ...code...);   // Inline code which refers to this actor
+/// call!([core], |stakker| ...code...);  // Generic inline code (`&mut Stakker` arg)
 /// ```
 ///
 /// Implemented using [`Core::defer`], [`Actor::defer`],
@@ -624,7 +628,7 @@ macro_rules! generic_fwd {
         stakker::indices!([$(($x))*] [$(($t))*] generic_fwd_prep $handler actor _args ($($t,)*) <$type> $method)
     }};
     // Calling closures
-    ($handler:ident; [$cx:expr], move |$this:ident, $cxid:ident, $arg:ident : $t:ty| $($body:tt)+) => {{
+    ($handler:ident; [$cx:expr], |$this:ident, $cxid:ident, $arg:ident : $t:ty| $($body:tt)+) => {{
         stakker::COVERAGE!(generic_fwd_3);
         let cx: &mut stakker::Cx<'_, _> = $cx;  // Expecting Cx ref
         let actor = cx.this().clone();
@@ -632,13 +636,16 @@ macro_rules! generic_fwd {
                            move |$this, $cxid, $arg: $t| $($body)*;
                            std::compile_error!("`ret_to!` with a closure requires a single Option argument"))
     }};
-    ($handler:ident; [$cx:expr], move |$this:ident, $cxid:ident $(, $arg:ident : $t:ty)*| $($body:tt)+) => {{
+    ($handler:ident; [$cx:expr], |$this:ident, $cxid:ident $(, $arg:ident : $t:ty)*| $($body:tt)+) => {{
         stakker::COVERAGE!(generic_fwd_4);
         let cx: &mut stakker::Cx<'_, _> = $cx;  // Expecting Cx ref
         let actor = cx.this().clone();
         stakker::$handler!(ready actor;
                            move |$this, $cxid, ($($arg),*): ($($t),*)| $($body)*;
                            std::compile_error!("`ret_to!` with a closure requires a single Option argument"))
+    }};
+    ($handler:ident; [$cx:expr], move | $($x:tt)*) => {{
+        std::compile_error!("Do not add `move` to closures as they get an implicit `move` anyway");
     }};
 }
 #[doc(hidden)]
@@ -703,8 +710,9 @@ macro_rules! generic_fwd_prep {
 ///
 /// // Forward a call to inline code which refers to this actor.  In
 /// // this case the `Fwd` argument list is extracted from the closure
-/// // argument list and no `as` section is required.
-/// fwd_to!([cx], move |this, cx, arg1: type1, arg2: type2...| ...code...);
+/// // argument list and no `as` section is required.  Closure is
+/// // always treated as a `move` closure.
+/// fwd_to!([cx], |this, cx, arg1: type1, arg2: type2...| ...code...);
 /// ```
 ///
 /// Implemented using [`Fwd::to_actor`] or [`Fwd::to_actor_prep`].
@@ -824,11 +832,14 @@ macro_rules! fwd_nop {
 /// [`fwd_to!`]: macro.fwd_to.html
 #[macro_export]
 macro_rules! ret_to {
-    ([$cx:expr], move |$this:ident, $cxid:ident, $arg:ident : Option<$t:ty>| $($body:tt)+) => {{
+    ([$cx:expr], |$this:ident, $cxid:ident, $arg:ident : Option<$t:ty>| $($body:tt)+) => {{
         stakker::COVERAGE!(ret_to_0);
         let cx: &mut stakker::Cx<'_, _> = $cx;  // Expecting Cx ref
         let actor = cx.this().clone();
         stakker::Ret::to_actor(actor, move |$this, $cxid, $arg: Option<$t>| $($body)*)
+    }};
+    ([$cx:expr], move | $($x:tt)*) => {{
+        std::compile_error!("Do not add `move` to closures as they get an implicit `move` anyway");
     }};
     // Closures not matching above will get caught below, giving a
     // compilation error

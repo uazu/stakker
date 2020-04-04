@@ -5,6 +5,14 @@ before 0.1.0 is allowed to make breaking changes.
 
 <!-- see keepachangelog.com for format ideas -->
 
+## 0.1.0 (2020-04-04)
+
+### Changed
+
+- For `call!`-family and `fwd_to!`-family macros using closures, no
+  longer require `move` keyword and make all closures implicitly
+  `move` so that they are `'static`
+
 ## 0.0.2 (2020-03-04)
 
 ### Added

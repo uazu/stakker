@@ -1,6 +1,11 @@
 use crate::{Actor, Cx};
 use static_assertions::assert_eq_size;
 
+// TODO: Consider `Ret` with built-in timeout that returns None if a
+// response is not generated within a certain time.  This would be
+// used for connections to unreliable components, e.g. ones over TCP
+// links etc.
+
 /// Returner for messages of type `M`
 ///
 /// This can be called only once, and if dropped, it will return a
