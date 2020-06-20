@@ -7,8 +7,12 @@ use std::rc::Rc;
 /// Ref-counted shared mutable data
 ///
 /// This allows synchronous modification of shared state from actor
-/// methods.  So this breaks the actor model.  Using it to share data
-/// between actors effectively causes those actors to be bound
+/// methods.  If you only wish to share immutable data, use
+/// `std::rc::Rc` instead which avoids having to add `.ro(cx)` to
+/// access the data.
+///
+/// Note that this breaks the actor model.  Using it to share mutable
+/// data between actors effectively causes those actors to be bound
 /// together in a group.  It would be impossible to split one of those
 /// actors off to another process or over a remote link, or to test
 /// them independently.  However the actor model still applies to the
@@ -48,7 +52,8 @@ impl<T> Share<T> {
     }
 
     /// Get a read-only (immutable, shared) reference to the contents
-    /// of the [`Share`] instance
+    /// of the [`Share`] instance.  By default this is a static check,
+    /// which compiles down to a direct access.
     ///
     /// [`Share`]: struct.Share.html
     #[inline]
@@ -57,7 +62,8 @@ impl<T> Share<T> {
     }
 
     /// Get a read-write (mutable, exclusive) reference to the
-    /// contents of the [`Share`] instance
+    /// contents of the [`Share`] instance.  By default this is a
+    /// static check, which compiles down to a direct access.
     ///
     /// [`Share`]: struct.Share.html
     #[inline]

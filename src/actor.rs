@@ -277,14 +277,11 @@ impl<A> Actor<A> {
         }
     }
 
-    /// Apply a function to the actor if it is in the **Prep** state,
-    /// otherwise do nothing.
+    /// Apply a closure to the actor if it is in the **Prep** state,
+    /// otherwise do nothing.  This is used to implement deferred prep
+    /// calls.
     #[inline]
-    pub fn apply_prep(
-        &self,
-        s: &mut Stakker,
-        f: impl FnOnce(&mut Cx<'_, A>) -> Option<A> + 'static,
-    ) {
+    pub fn apply_prep(&self, s: &mut Stakker, f: impl FnOnce(&mut Cx<'_, A>) -> Option<A>) {
         if self.rc.is_prep() {
             let mut cx = Cx::new(&mut s.core, self);
             let val = f(&mut cx);
@@ -296,9 +293,11 @@ impl<A> Actor<A> {
         }
     }
 
-    /// Apply a function to the actor if it is in the **Ready** state.
-    /// If the actor is in the **Prep** state, then queues the
-    /// operation instead of executing it.
+    /// Apply a closure to the actor when it reaches the **Ready**
+    /// state.  If the actor is already in the **Ready** state, the
+    /// closure is executed immediately.  If the actor is in the
+    /// **Prep** state, then it queues the operation instead of
+    /// executing it.  This is used to implement deferred ready calls.
     #[inline]
     pub fn apply(&self, s: &mut Stakker, f: impl FnOnce(&mut A, &mut Cx<'_, A>) + 'static) {
         if let Some(val) = self.rc.borrow_ready(&mut s.actor_owner) {
@@ -412,6 +411,7 @@ pub struct Cx<'a, A: 'static> {
 }
 
 impl<'a, A> Cx<'a, A> {
+    #[inline]
     pub(super) fn new(core: &'a mut Core, this: &'a Actor<A>) -> Self {
         Self {
             this,
@@ -423,6 +423,7 @@ impl<'a, A> Cx<'a, A> {
     /// Borrow the current actor reference temporarily.  If you need a
     /// longer-lived reference to the actor, then clone the result of
     /// this call.
+    #[inline]
     pub fn this(&self) -> &Actor<A> {
         self.this
     }
@@ -435,6 +436,7 @@ impl<'a, A> Cx<'a, A> {
     /// actor was created.
     ///
     /// [`StopCause`]: enum.StopCause.html
+    #[inline]
     pub fn stop(&mut self) {
         self.die = Some(StopCause::Stopped);
     }
@@ -447,6 +449,7 @@ impl<'a, A> Cx<'a, A> {
     /// actor was created.
     ///
     /// [`StopCause`]: enum.StopCause.html
+    #[inline]
     pub fn fail(&mut self, e: impl Error + 'static) {
         self.die = Some(StopCause::Failed(Box::new(e)));
     }
@@ -459,6 +462,7 @@ impl<'a, A> Cx<'a, A> {
     /// actor was created.
     ///
     /// [`StopCause`]: enum.StopCause.html
+    #[inline]
     pub fn fail_str(&mut self, e: impl Into<String>) {
         self.die = Some(StopCause::Failed(Box::new(StringError(e.into()))));
     }

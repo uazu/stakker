@@ -1,6 +1,6 @@
 [package]
 name = "stakker"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Jim Peters <jim@uazu.net>"]
 edition = "2018"
 
@@ -15,7 +15,7 @@ keywords = [ "actor", "runtime", "async", "pony", "erlang" ]
 categories = [ "asynchronous", "concurrency", "data-structures" ]
 
 [badges]
-maintenance = { status = "experimental" }
+maintenance = { status = "actively-developed" }
 
 [dependencies]
 static_assertions = "1.0"

@@ -29,8 +29,8 @@
 /// equivalent to `cx: &mut Cx<'_, OtherType>`.
 #[macro_export]
 macro_rules! CX {
-    () => { &mut stakker::Cx<'_, Self> };
-    ($other:ty) => { &mut stakker::Cx<'_, $other> };
+    () => { &mut $crate::Cx<'_, Self> };
+    ($other:ty) => { &mut $crate::Cx<'_, $other> };
 }
 
 // Generate lists of indices from lists of `tt` AST objects.  This is
@@ -47,29 +47,29 @@ macro_rules! CX {
 #[macro_export]
 macro_rules! indices {
     ( $cb:ident $( $args:tt )* ) =>
-    { stakker::$cb!( $($args)* ) };
+    { $crate::$cb!( $($args)* ) };
     ( [ ] $($rest:tt)* ) =>
-    { stakker::indices!($($rest)* []) };
+    { $crate::indices!($($rest)* []) };
     ( [ $x0:tt ] $($rest:tt)* ) =>
-    { stakker::indices!($($rest)* [ 0 ]) };
+    { $crate::indices!($($rest)* [ 0 ]) };
     ( [ $x0:tt $x1:tt ] $($rest:tt)* ) =>
-    { stakker::indices!($($rest)* [ 0 1 ]) };
+    { $crate::indices!($($rest)* [ 0 1 ]) };
     ( [ $x0:tt $x1:tt $x2:tt ] $($rest:tt)* ) =>
-    { stakker::indices!($($rest)* [ 0 1 2 ]) };
+    { $crate::indices!($($rest)* [ 0 1 2 ]) };
     ( [ $x0:tt $x1:tt $x2:tt $x3:tt ] $($rest:tt)* ) =>
-    { stakker::indices!($($rest)* [ 0 1 2 3 ]) };
+    { $crate::indices!($($rest)* [ 0 1 2 3 ]) };
     ( [ $x0:tt $x1:tt $x2:tt $x3:tt $x4:tt ] $($rest:tt)* ) =>
-    { stakker::indices!($($rest)* [ 0 1 2 3 4 ]) };
+    { $crate::indices!($($rest)* [ 0 1 2 3 4 ]) };
     ( [ $x0:tt $x1:tt $x2:tt $x3:tt $x4:tt $x5:tt ] $($rest:tt)* ) =>
-    { stakker::indices!($($rest)* [ 0 1 2 3 4 5 ]) };
+    { $crate::indices!($($rest)* [ 0 1 2 3 4 5 ]) };
     ( [ $x0:tt $x1:tt $x2:tt $x3:tt $x4:tt $x5:tt $x6:tt ] $($rest:tt)* ) =>
-    { stakker::indices!($($rest)* [ 0 1 2 3 4 5 6 ]) };
+    { $crate::indices!($($rest)* [ 0 1 2 3 4 5 6 ]) };
     ( [ $x0:tt $x1:tt $x2:tt $x3:tt $x4:tt $x5:tt $x6:tt $x7:tt ] $($rest:tt)* ) =>
-    { stakker::indices!($($rest)* [ 0 1 2 3 4 5 6 7 ]) };
+    { $crate::indices!($($rest)* [ 0 1 2 3 4 5 6 7 ]) };
     ( [ $x0:tt $x1:tt $x2:tt $x3:tt $x4:tt $x5:tt $x6:tt $x7:tt $x8:tt ] $($rest:tt)* ) =>
-    { stakker::indices!($($rest)* [ 0 1 2 3 4 5 6 7 8 ]) };
+    { $crate::indices!($($rest)* [ 0 1 2 3 4 5 6 7 8 ]) };
     ( [ $x0:tt $x1:tt $x2:tt $x3:tt $x4:tt $x5:tt $x6:tt $x7:tt $x8:tt $x9:tt ] $($rest:tt)* ) =>
-    { stakker::indices!($($rest)* [ 0 1 2 3 4 5 6 7 8 9 ]) };
+    { $crate::indices!($($rest)* [ 0 1 2 3 4 5 6 7 8 9 ]) };
 }
 
 // Used to insert empty function calls in test mode which let us test
@@ -79,7 +79,7 @@ macro_rules! indices {
 #[macro_export]
 macro_rules! COVERAGE {
     ($name:ident) => {
-        stakker::test::macro_coverage::$name();
+        $crate::test::macro_coverage::$name();
     };
 }
 #[cfg(not(test))]
@@ -110,20 +110,20 @@ macro_rules! COVERAGE {
 /// [`actor_new!`]: macro.actor_new.html
 #[macro_export]
 macro_rules! actor {
-    ($core:expr, $type:ident :: $init:ident($($x:expr),*), $notify:expr) => {{
-        stakker::COVERAGE!(actor_0);
+    ($core:expr, $type:ident :: $init:ident($($x:expr),* $(,)? ), $notify:expr) => {{
+        $crate::COVERAGE!(actor_0);
         let notify = $notify;
         let core = $core.access_core();
-        let actor = stakker::ActorOwn::<$type>::new(core, notify);
-        stakker::call!([actor], <$type>::$init($($x),*));
+        let actor = $crate::ActorOwn::<$type>::new(core, notify);
+        $crate::call!([actor], <$type>::$init($($x),*));
         actor
     }};
-    ($core:expr, <$type:ty> :: $init:ident($($x:expr),*), $notify:expr) => {{
-        stakker::COVERAGE!(actor_1);
+    ($core:expr, <$type:ty> :: $init:ident($($x:expr),* $(,)? ), $notify:expr) => {{
+        $crate::COVERAGE!(actor_1);
         let notify = $notify;
         let core = $core.access_core();
-        let actor = stakker::ActorOwn::<$type>::new(core, notify);
-        stakker::call!([actor], <$type>::$init($($x),*));
+        let actor = $crate::ActorOwn::<$type>::new(core, notify);
+        $crate::call!([actor], <$type>::$init($($x),*));
         actor
     }};
 }
@@ -150,9 +150,9 @@ macro_rules! actor {
 #[macro_export]
 macro_rules! actor_new {
     ($core:expr, $type:ty, $notify:expr) => {{
-        stakker::COVERAGE!(actor_new);
+        $crate::COVERAGE!(actor_new);
         let notify = $notify;
-        stakker::ActorOwn::<$type>::new($core, notify) // Expecting Cx, Core or Stakker ref
+        $crate::ActorOwn::<$type>::new($core, notify) // Expecting Cx, Core or Stakker ref
     }};
 }
 
@@ -160,69 +160,78 @@ macro_rules! actor_new {
 #[doc(hidden)]
 #[macro_export]
 macro_rules! generic_call {
+    // Closures
     ($handler:ident $hargs:tt $access:ident;
      [$cx:expr], |$this:ident, $cxid:ident| $body:expr) => {{
-         stakker::COVERAGE!(generic_call_0);
-         let cb = move |$this: &mut Self, $cxid: &mut stakker::Cx<'_, Self>| $body;
-         let cx: &mut stakker::Cx<'_, Self> = $cx;  // Expecting Cx<Self> ref
+         $crate::COVERAGE!(generic_call_0);
+         let cb = move |$this: &mut Self, $cxid: &mut $crate::Cx<'_, Self>| $body;
+         let cx: &mut $crate::Cx<'_, Self> = $cx;  // Expecting Cx<Self> ref
          let this = cx.this().clone();
          let core = $cx.access_core();
-         stakker::$handler!($hargs core; move |s| this.apply(s, cb));
+         $crate::$handler!($hargs core; move |s| this.apply(s, cb));
      }};
     ($handler:ident $hargs:tt $access:ident;
      [$core:expr], |$stakker:ident| $body:expr) => {{
-         stakker::COVERAGE!(generic_call_1);
+         $crate::COVERAGE!(generic_call_1);
          let core = $core.access_core();  // Expecting Core, Cx or Stakker ref
-         let cb = move |$stakker : &mut stakker::Stakker| $body;
-         stakker::$handler!($hargs core; cb);
+         let cb = move |$stakker : &mut $crate::Stakker| $body;
+         $crate::$handler!($hargs core; cb);
+     }};
+    ($handler:ident $hargs:tt $access:ident;
+     [$cx:expr], |_ $($x:tt)*) => {{
+         std::compile_error!("Do not use '_' as a closure argument in this macro; use a '_' prefix instead");
+     }};
+    ($handler:ident $hargs:tt $access:ident;
+     [$cx:expr], |$t:ident, _ $($x:tt)*) => {{
+         std::compile_error!("Do not use '_' as a closure argument in this macro; use a '_' prefix instead");
      }};
     ($handler:ident $hargs:tt $access:ident;
      [$cx:expr], move | $($x:tt)*) => {{
-        std::compile_error!("Do not add `move` to closures as they get an implicit `move` anyway");
+         std::compile_error!("Do not add `move` to closures as they get an implicit `move` anyway");
      }};
     // All remaining [actor] turned to [actor, actor]
     ($handler:ident $hargs:tt $access:ident;
      [$actor_or_cx:expr], $($x:tt)+) => {{
          // Can't do `let` for actor_or_cx here because that would move it and drop it
-         stakker::generic_call!($handler $hargs $access; [$actor_or_cx, $actor_or_cx], $($x)+)
+         $crate::generic_call!($handler $hargs $access; [$actor_or_cx, $actor_or_cx], $($x)+)
      }};
     ($handler:ident $hargs:tt $access:ident;
      [$actor:expr, $core:expr], $method:ident ( $($x:expr),* $(,)? )) => {{
-         stakker::COVERAGE!(generic_call_2);
+         $crate::COVERAGE!(generic_call_2);
          let actor = $actor.access_actor().clone();  // Expecting Actor or Cx ref
          let _args = ( $($x,)* );  // This must be before access borrow
          let access = $core.$access();
-         stakker::indices!([$(($x))*] generic_call_ready $handler $hargs access; actor _args $method)
+         $crate::indices!([$(($x))*] generic_call_ready $handler $hargs access; actor _args $method)
      }};
     ($handler:ident $hargs:tt $access:ident;
      [$actor:expr, $core:expr], $type:ident :: $method:ident ( $($x:expr),* $(,)? )) => {{
-         stakker::COVERAGE!(generic_call_3);
+         $crate::COVERAGE!(generic_call_3);
          let actor = $actor.access_actor().clone();  // Expecting Actor or Cx ref
          let _args = ( $($x,)* );  // This must be before access borrow
          let access = $core.$access();
-         stakker::indices!([$(($x))*] generic_call_prep $handler $hargs access; actor _args <$type> $method)
+         $crate::indices!([$(($x))*] generic_call_prep $handler $hargs access; actor _args <$type> $method)
      }};
     ($handler:ident $hargs:tt $access:ident;
      [$actor:expr, $core:expr], < $type:ty > :: $method:ident ( $($x:expr),* $(,)? )) => {{
-         stakker::COVERAGE!(generic_call_4);
+         $crate::COVERAGE!(generic_call_4);
          let actor = $actor.access_actor().clone();  // Expecting Actor or Cx ref
          let _args = ( $($x,)* );  // This must be before access borrow
          let access = $core.$access();
-         stakker::indices!([$(($x))*] generic_call_prep $handler $hargs access; actor _args <$type> $method)
+         $crate::indices!([$(($x))*] generic_call_prep $handler $hargs access; actor _args <$type> $method)
      }};
 }
 #[doc(hidden)]
 #[macro_export]
 macro_rules! generic_call_ready {
     ($handler:ident $hargs:tt $core:ident; $actor:ident $args:ident $method:ident [$($xi:tt)*]) => {
-        stakker::$handler!($hargs $core; move |s| $actor.apply(s, move |o, c| o.$method(c $(, $args.$xi)*)))
+        $crate::$handler!($hargs $core; move |s| $actor.apply(s, move |o, c| o.$method(c $(, $args.$xi)*)))
     }
 }
 #[doc(hidden)]
 #[macro_export]
 macro_rules! generic_call_prep {
     ($handler:ident $hargs:tt $core:ident; $actor:ident $args:ident <$atyp:ty> $method:ident [$($xi:tt)*]) => {
-        stakker::$handler!($hargs $core; move |s| $actor.apply_prep(s, move |c| <$atyp>::$method(c $(, $args.$xi)*)))
+        $crate::$handler!($hargs $core; move |s| $actor.apply_prep(s, move |c| <$atyp>::$method(c $(, $args.$xi)*)))
     }
 }
 
@@ -282,15 +291,15 @@ macro_rules! generic_call_prep {
 #[macro_export]
 macro_rules! call {
     ( $($x:tt)+ ) => {{
-        stakker::COVERAGE!(call_0);
-        stakker::generic_call!(call_aux () access_deferrer; $($x)+);
+        $crate::COVERAGE!(call_0);
+        $crate::generic_call!(call_aux () access_deferrer; $($x)+);
     }};
 }
 #[doc(hidden)]
 #[macro_export]
 macro_rules! call_aux {
     (() $defer:ident; $cb:expr) => {{
-        stakker::COVERAGE!(call_1);
+        $crate::COVERAGE!(call_1);
         $defer.defer($cb);
     }};
 }
@@ -316,15 +325,15 @@ macro_rules! call_aux {
 #[macro_export]
 macro_rules! lazy {
     ( $($x:tt)+ ) => {{
-        stakker::COVERAGE!(lazy_0);
-        stakker::generic_call!(lazy_aux () access_core; $($x)+); // Error? Try [actor, core] form
+        $crate::COVERAGE!(lazy_0);
+        $crate::generic_call!(lazy_aux () access_core; $($x)+); // Error? Try [actor, core] form
     }};
 }
 #[doc(hidden)]
 #[macro_export]
 macro_rules! lazy_aux {
     (() $core:ident; $cb:expr) => {{
-        stakker::COVERAGE!(lazy_1);
+        $crate::COVERAGE!(lazy_1);
         $core.lazy($cb);
     }};
 }
@@ -350,15 +359,15 @@ macro_rules! lazy_aux {
 #[macro_export]
 macro_rules! idle {
     ( $($x:tt)+ ) => {{
-        stakker::COVERAGE!(idle_0);
-        stakker::generic_call!(idle_aux () access_core; $($x)+); // Error? Try [actor, core] form
+        $crate::COVERAGE!(idle_0);
+        $crate::generic_call!(idle_aux () access_core; $($x)+); // Error? Try [actor, core] form
     }};
 }
 #[doc(hidden)]
 #[macro_export]
 macro_rules! idle_aux {
     (() $core:ident; $cb:expr) => {{
-        stakker::COVERAGE!(idle_1);
+        $crate::COVERAGE!(idle_1);
         $core.idle($cb);
     }};
 }
@@ -388,16 +397,16 @@ macro_rules! idle_aux {
 #[macro_export]
 macro_rules! after {
     ( $dur:expr, $($x:tt)+ ) => {{
-        stakker::COVERAGE!(after_0);
+        $crate::COVERAGE!(after_0);
         let dur: Duration = $dur;
-        stakker::generic_call!(after_aux (dur) access_core; $($x)+) // Error? Try [actor, core] form
+        $crate::generic_call!(after_aux (dur) access_core; $($x)+) // Error? Try [actor, core] form
     }};
 }
 #[doc(hidden)]
 #[macro_export]
 macro_rules! after_aux {
     (($dur:ident) $core:ident; $cb:expr) => {{
-        stakker::COVERAGE!(after_1);
+        $crate::COVERAGE!(after_1);
         $core.after($dur, $cb);
     }};
 }
@@ -427,16 +436,16 @@ macro_rules! after_aux {
 #[macro_export]
 macro_rules! at {
     ( $inst:expr, $($x:tt)+ ) => {{
-        stakker::COVERAGE!(at_0);
+        $crate::COVERAGE!(at_0);
         let inst: std::time::Instant = $inst;
-        stakker::generic_call!(at_aux (inst) access_core; $($x)+) // Error? Try [actor, core] form
+        $crate::generic_call!(at_aux (inst) access_core; $($x)+) // Error? Try [actor, core] form
     }};
 }
 #[doc(hidden)]
 #[macro_export]
 macro_rules! at_aux {
     (($inst:ident) $core:ident; $cb:expr) => {{
-        stakker::COVERAGE!(at_1);
+        $crate::COVERAGE!(at_1);
         $core.timer_add($inst, $cb)
     }};
 }
@@ -480,17 +489,17 @@ macro_rules! at_aux {
 #[macro_export]
 macro_rules! timer_max {
     ( $var:expr, $inst:expr, $($x:tt)+ ) => {{
-        stakker::COVERAGE!(timer_max_0);
-        let var: &mut stakker::MaxTimerKey = $var;
+        $crate::COVERAGE!(timer_max_0);
+        let var: &mut $crate::MaxTimerKey = $var;
         let inst: std::time::Instant = $inst;
-        stakker::generic_call!(timer_max_aux (var, inst) access_core; $($x)+) // Error? Try [actor, core] form
+        $crate::generic_call!(timer_max_aux (var, inst) access_core; $($x)+) // Error? Try [actor, core] form
     }};
 }
 #[doc(hidden)]
 #[macro_export]
 macro_rules! timer_max_aux {
     (($var:ident, $inst:ident) $core:ident; $cb:expr) => {{
-        stakker::COVERAGE!(timer_max_1);
+        $crate::COVERAGE!(timer_max_1);
         if !$core.timer_max_upd(*$var, $inst) {
             *$var = $core.timer_max_add($inst, $cb);
         }
@@ -536,17 +545,17 @@ macro_rules! timer_max_aux {
 #[macro_export]
 macro_rules! timer_min {
     ( $var:expr, $inst:expr, $($x:tt)+ ) => {{
-        stakker::COVERAGE!(timer_min_0);
-        let var: &mut stakker::MinTimerKey = $var;
+        $crate::COVERAGE!(timer_min_0);
+        let var: &mut $crate::MinTimerKey = $var;
         let inst: std::time::Instant = $inst;
-        stakker::generic_call!(timer_min_aux (var, inst) access_core; $($x)+) // Error? Try [actor, core] form
+        $crate::generic_call!(timer_min_aux (var, inst) access_core; $($x)+) // Error? Try [actor, core] form
     }};
 }
 #[doc(hidden)]
 #[macro_export]
 macro_rules! timer_min_aux {
     (($var:ident, $inst:ident) $core:ident; $cb:expr) => {{
-        stakker::COVERAGE!(timer_min_1);
+        $crate::COVERAGE!(timer_min_1);
         if !$core.timer_min_upd(*$var, $inst) {
             *$var = $core.timer_min_add($inst, $cb);
         }
@@ -569,11 +578,11 @@ macro_rules! fwd {
     // A single argument isn't passed as a tuple, so has special
     // handling.
     ([ $fwd:expr ], $arg:expr) => {{
-        stakker::COVERAGE!(fwd_0);
+        $crate::COVERAGE!(fwd_0);
         $fwd.fwd($arg);
     }};
     ([ $fwd:expr ] $(, $arg:expr)*) => {{
-        stakker::COVERAGE!(fwd_1);
+        $crate::COVERAGE!(fwd_1);
         $fwd.fwd(( $($arg ,)* ));
     }};
 }
@@ -595,11 +604,11 @@ macro_rules! ret {
     // A single argument isn't passed as a tuple, so has special
     // handling.
     ([ $ret:expr ], $arg:expr) => {{
-        stakker::COVERAGE!(ret_0);
+        $crate::COVERAGE!(ret_0);
         $ret.ret($arg);
     }};
     ([ $ret:expr ] $(, $arg:expr)*) => {{
-        stakker::COVERAGE!(ret_1);
+        $crate::COVERAGE!(ret_1);
         $ret.ret(( $($arg ,)* ));
     }};
 }
@@ -610,39 +619,45 @@ macro_rules! ret {
 macro_rules! generic_fwd {
     // Calling actors
     ($handler:ident; [$actor:expr], $method:ident ( $($x:expr),* ) as ( $($t:ty),* )) => {{
-        stakker::COVERAGE!(generic_fwd_0);
+        $crate::COVERAGE!(generic_fwd_0);
         let actor = $actor.access_actor().clone();  // Expecting Actor or Cx ref
         let _args = ( $($x,)* );
-        stakker::indices!([$(($x))*] [$(($t))*] generic_fwd_ready $handler actor _args ($($t,)*) $method)
+        $crate::indices!([$(($x))*] [$(($t))*] generic_fwd_ready $handler actor _args ($($t,)*) $method)
     }};
     ($handler:ident; [$actor:expr], $type:ident::$method:ident ( $($x:expr),* ) as ( $($t:ty),* )) => {{
-        stakker::COVERAGE!(generic_fwd_1);
+        $crate::COVERAGE!(generic_fwd_1);
         let actor = $actor.access_actor().clone();  // Expecting Actor or Cx ref
         let _args = ( $($x,)* );
-        stakker::indices!([$(($x))*] [$(($t))*] generic_fwd_prep $handler actor _args ($($t,)*) <$type> $method)
+        $crate::indices!([$(($x))*] [$(($t))*] generic_fwd_prep $handler actor _args ($($t,)*) <$type> $method)
     }};
     ($handler:ident; [$actor:expr], <$type:ty>::$method:ident ( $($x:expr),* ) as ( $($t:ty),* )) => {{
-        stakker::COVERAGE!(generic_fwd_2);
+        $crate::COVERAGE!(generic_fwd_2);
         let actor = $actor.access_actor().clone();  // Expecting Actor or Cx ref
         let _args = ( $($x,)* );
-        stakker::indices!([$(($x))*] [$(($t))*] generic_fwd_prep $handler actor _args ($($t,)*) <$type> $method)
+        $crate::indices!([$(($x))*] [$(($t))*] generic_fwd_prep $handler actor _args ($($t,)*) <$type> $method)
     }};
     // Calling closures
     ($handler:ident; [$cx:expr], |$this:ident, $cxid:ident, $arg:ident : $t:ty| $($body:tt)+) => {{
-        stakker::COVERAGE!(generic_fwd_3);
-        let cx: &mut stakker::Cx<'_, _> = $cx;  // Expecting Cx ref
+        $crate::COVERAGE!(generic_fwd_3);
+        let cx: &mut $crate::Cx<'_, _> = $cx;  // Expecting Cx ref
         let actor = cx.this().clone();
-        stakker::$handler!(ready actor;
+        $crate::$handler!(ready actor;
                            move |$this, $cxid, $arg: $t| $($body)*;
                            std::compile_error!("`ret_to!` with a closure requires a single Option argument"))
     }};
     ($handler:ident; [$cx:expr], |$this:ident, $cxid:ident $(, $arg:ident : $t:ty)*| $($body:tt)+) => {{
-        stakker::COVERAGE!(generic_fwd_4);
-        let cx: &mut stakker::Cx<'_, _> = $cx;  // Expecting Cx ref
+        $crate::COVERAGE!(generic_fwd_4);
+        let cx: &mut $crate::Cx<'_, _> = $cx;  // Expecting Cx ref
         let actor = cx.this().clone();
-        stakker::$handler!(ready actor;
+        $crate::$handler!(ready actor;
                            move |$this, $cxid, ($($arg),*): ($($t),*)| $($body)*;
                            std::compile_error!("`ret_to!` with a closure requires a single Option argument"))
+    }};
+    ($handler:ident; [$cx:expr], |_ $($x:tt)+) => {{
+        std::compile_error!("Do not use '_' as a closure argument in this macro; use a '_' prefix instead");
+    }};
+    ($handler:ident; [$cx:expr], |$t:ident, _ $($x:tt)+) => {{
+        std::compile_error!("Do not use '_' as a closure argument in this macro; use a '_' prefix instead");
     }};
     ($handler:ident; [$cx:expr], move | $($x:tt)*) => {{
         std::compile_error!("Do not add `move` to closures as they get an implicit `move` anyway");
@@ -652,14 +667,14 @@ macro_rules! generic_fwd {
 #[macro_export]
 macro_rules! generic_fwd_ready {
     ($handler:ident $actor:ident $args:ident ($t:ty,) $method:ident [$($xi:tt)*] [$($ti:tt)*]) => {{
-        stakker::COVERAGE!(generic_fwd_5);
-        stakker::$handler!(ready $actor;
+        $crate::COVERAGE!(generic_fwd_5);
+        $crate::$handler!(ready $actor;
                            move |a, cx, m: $t| a.$method(cx $(, $args.$xi)* , m);
                            move |a, cx, m: Option<$t>| a.$method(cx $(, $args.$xi)* , m))
     }};
     ($handler:ident $actor:ident $args:ident ($($t:ty,)*) $method:ident [$($xi:tt)*] [$($ti:tt)*]) => {{
-        stakker::COVERAGE!(generic_fwd_6);
-        stakker::$handler!(ready $actor;
+        $crate::COVERAGE!(generic_fwd_6);
+        $crate::$handler!(ready $actor;
                            move |a, cx, _m: ($($t,)*)| a.$method(cx $(, $args.$xi)* $(, _m.$ti)*);
                            move |a, cx, m: Option<($($t,)*)>| a.$method(cx $(, $args.$xi)*, m))
     }};
@@ -668,14 +683,14 @@ macro_rules! generic_fwd_ready {
 #[macro_export]
 macro_rules! generic_fwd_prep {
     ($handler:ident $actor:ident $args:ident ($t:ty,) <$atyp:ty> $method:ident [$($xi:tt)*] [$($ti:tt)*]) => {{
-        stakker::COVERAGE!(generic_fwd_7);
-        stakker::$handler!(prep $actor;
+        $crate::COVERAGE!(generic_fwd_7);
+        $crate::$handler!(prep $actor;
                            move |cx, m: $t| <$atyp>::$method(cx $(, $args.$xi)* , m);
                            move |cx, m: Option<$t>| <$atyp>::$method(cx $(, $args.$xi)* , m))
     }};
     ($handler:ident $actor:ident $args:ident ($($t:ty,)*) <$atyp:ty> $method:ident [$($xi:tt)*] [$($ti:tt)*]) => {{
-        stakker::COVERAGE!(generic_fwd_8);
-        stakker::$handler!(prep $actor;
+        $crate::COVERAGE!(generic_fwd_8);
+        $crate::$handler!(prep $actor;
                            move |cx, _m: ($($t,)*)| <$atyp>::$method(cx $(, $args.$xi)* $(, _m.$ti)*);
                            move |cx, m: Option<($($t,)*)>| <$atyp>::$method(cx $(, $args.$xi)*, m))
     }};
@@ -724,20 +739,20 @@ macro_rules! generic_fwd_prep {
 #[macro_export]
 macro_rules! fwd_to {
     ($($x:tt)*) => {{
-        stakker::COVERAGE!(fwd_to_0);
-        stakker::generic_fwd!(fwd_to_aux; $($x)*)
+        $crate::COVERAGE!(fwd_to_0);
+        $crate::generic_fwd!(fwd_to_aux; $($x)*)
     }}
 }
 #[doc(hidden)]
 #[macro_export]
 macro_rules! fwd_to_aux {
     (ready $actor:ident; $cb:expr; $cb2:expr) => {{
-        stakker::COVERAGE!(fwd_to_1);
-        stakker::Fwd::to_actor($actor, $cb)
+        $crate::COVERAGE!(fwd_to_1);
+        $crate::Fwd::to_actor($actor, $cb)
     }};
     (prep $actor:ident; $cb:expr; $cb2:expr) => {{
-        stakker::COVERAGE!(fwd_to_2);
-        stakker::Fwd::to_actor_prep($actor, $cb)
+        $crate::COVERAGE!(fwd_to_2);
+        $crate::Fwd::to_actor_prep($actor, $cb)
     }};
 }
 
@@ -756,8 +771,8 @@ macro_rules! fwd_to_aux {
 #[macro_export]
 macro_rules! fwd_panic {
     ($arg:expr) => {{
-        stakker::COVERAGE!(fwd_panic_0);
-        stakker::Fwd::panic($arg)
+        $crate::COVERAGE!(fwd_panic_0);
+        $crate::Fwd::panic($arg)
     }};
 }
 
@@ -782,8 +797,8 @@ macro_rules! fwd_panic {
 #[macro_export]
 macro_rules! fwd_do {
     ($cb:expr) => {{
-        stakker::COVERAGE!(fwd_do_0);
-        stakker::Fwd::new($cb)
+        $crate::COVERAGE!(fwd_do_0);
+        $crate::Fwd::new($cb)
     }};
 }
 
@@ -800,8 +815,8 @@ macro_rules! fwd_do {
 #[macro_export]
 macro_rules! fwd_nop {
     () => {{
-        stakker::COVERAGE!(fwd_nop_0);
-        stakker::Fwd::new(|_| {})
+        $crate::COVERAGE!(fwd_nop_0);
+        $crate::Fwd::new(|_| {})
     }};
 }
 
@@ -833,10 +848,10 @@ macro_rules! fwd_nop {
 #[macro_export]
 macro_rules! ret_to {
     ([$cx:expr], |$this:ident, $cxid:ident, $arg:ident : Option<$t:ty>| $($body:tt)+) => {{
-        stakker::COVERAGE!(ret_to_0);
-        let cx: &mut stakker::Cx<'_, _> = $cx;  // Expecting Cx ref
+        $crate::COVERAGE!(ret_to_0);
+        let cx: &mut $crate::Cx<'_, _> = $cx;  // Expecting Cx ref
         let actor = cx.this().clone();
-        stakker::Ret::to_actor(actor, move |$this, $cxid, $arg: Option<$t>| $($body)*)
+        $crate::Ret::to_actor(actor, move |$this, $cxid, $arg: Option<$t>| $($body)*)
     }};
     ([$cx:expr], move | $($x:tt)*) => {{
         std::compile_error!("Do not add `move` to closures as they get an implicit `move` anyway");
@@ -844,20 +859,20 @@ macro_rules! ret_to {
     // Closures not matching above will get caught below, giving a
     // compilation error
     ($($x:tt)*) => {{
-        stakker::COVERAGE!(ret_to_1);
-        stakker::generic_fwd!(ret_to_aux; $($x)*)
+        $crate::COVERAGE!(ret_to_1);
+        $crate::generic_fwd!(ret_to_aux; $($x)*)
     }}
 }
 #[doc(hidden)]
 #[macro_export]
 macro_rules! ret_to_aux {
     (ready $actor:ident; $cb:expr; $cb2:expr) => {{
-        stakker::COVERAGE!(ret_to_2);
-        stakker::Ret::to_actor($actor, $cb2)
+        $crate::COVERAGE!(ret_to_2);
+        $crate::Ret::to_actor($actor, $cb2)
     }};
     (prep $actor:ident; $cb:expr; $cb2:expr) => {{
-        stakker::COVERAGE!(ret_to_3);
-        stakker::Ret::to_actor_prep($actor, $cb2)
+        $crate::COVERAGE!(ret_to_3);
+        $crate::Ret::to_actor_prep($actor, $cb2)
     }};
 }
 
@@ -884,20 +899,20 @@ macro_rules! ret_to_aux {
 #[macro_export]
 macro_rules! ret_some_to {
     ($($x:tt)*) => {{
-        stakker::COVERAGE!(ret_some_to_0);
-        stakker::generic_fwd!(ret_some_to_aux; $($x)*)
+        $crate::COVERAGE!(ret_some_to_0);
+        $crate::generic_fwd!(ret_some_to_aux; $($x)*)
     }}
 }
 #[doc(hidden)]
 #[macro_export]
 macro_rules! ret_some_to_aux {
     (ready $actor:ident; $cb:expr; $cb2:expr) => {{
-        stakker::COVERAGE!(ret_some_to_1);
-        stakker::Ret::some_to_actor($actor, $cb)
+        $crate::COVERAGE!(ret_some_to_1);
+        $crate::Ret::some_to_actor($actor, $cb)
     }};
     (prep $actor:ident; $cb:expr; $cb2:expr) => {{
-        stakker::COVERAGE!(ret_some_to_2);
-        stakker::Ret::some_to_actor_prep($actor, $cb)
+        $crate::COVERAGE!(ret_some_to_2);
+        $crate::Ret::some_to_actor_prep($actor, $cb)
     }};
 }
 
@@ -922,8 +937,8 @@ macro_rules! ret_some_to_aux {
 #[macro_export]
 macro_rules! ret_do {
     ($cb:expr) => {{
-        stakker::COVERAGE!(ret_do_0);
-        stakker::Ret::new($cb)
+        $crate::COVERAGE!(ret_do_0);
+        $crate::Ret::new($cb)
     }};
 }
 
@@ -952,8 +967,8 @@ macro_rules! ret_do {
 #[macro_export]
 macro_rules! ret_some_do {
     ($cb:expr) => {{
-        stakker::COVERAGE!(ret_some_do_0);
-        stakker::Ret::new(move |m| {
+        $crate::COVERAGE!(ret_some_do_0);
+        $crate::Ret::new(move |m| {
             if let Some(m) = m {
                 ($cb)(m);
             }
@@ -977,8 +992,8 @@ macro_rules! ret_some_do {
 #[macro_export]
 macro_rules! ret_panic {
     ($arg:expr) => {{
-        stakker::COVERAGE!(ret_panic_0);
-        stakker::Ret::panic($arg)
+        $crate::COVERAGE!(ret_panic_0);
+        $crate::Ret::panic($arg)
     }};
 }
 
@@ -995,8 +1010,8 @@ macro_rules! ret_panic {
 #[macro_export]
 macro_rules! ret_nop {
     () => {{
-        stakker::COVERAGE!(ret_nop_0);
-        stakker::Ret::new(|_| {})
+        $crate::COVERAGE!(ret_nop_0);
+        $crate::Ret::new(|_| {})
     }};
 }
 
@@ -1019,14 +1034,14 @@ macro_rules! ret_nop {
 #[macro_export]
 macro_rules! ret_shutdown {
     ($core:expr) => {{
-        stakker::COVERAGE!(ret_shutdown_0);
+        $crate::COVERAGE!(ret_shutdown_0);
         let core = $core.access_core();
         let deferrer = core.deferrer();
-        stakker::Ret::new(move |m| {
+        $crate::Ret::new(move |m| {
             if let Some(cause) = m {
                 deferrer.defer(|s| s.shutdown(cause));
             } else {
-                deferrer.defer(|s| s.shutdown(stakker::StopCause::Dropped));
+                deferrer.defer(|s| s.shutdown($crate::StopCause::Dropped));
             }
         })
     }};

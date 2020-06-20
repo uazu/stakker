@@ -1,6 +1,5 @@
 //! Test macros
 
-use crate as stakker;
 use crate::{
     actor, actor_new, after, at, call, fwd, fwd_do, fwd_nop, fwd_panic, fwd_to, idle, lazy, ret,
     ret_do, ret_nop, ret_panic, ret_shutdown, ret_some_do, ret_some_to, ret_to, timer_max,
