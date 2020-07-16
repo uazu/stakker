@@ -156,6 +156,91 @@ macro_rules! actor_new {
     }};
 }
 
+/// Create a new actor that implements a trait and initialise it
+///
+/// ```ignore
+/// let actor = actor_of_trait!(core, BoxedTrait, Type::init(args...), notify);
+/// let actor = actor_of_trait!(core, BoxedTrait, <path::Type>::init(args...), notify);
+/// ```
+///
+/// This allows treating a set of actors that all implement a trait
+/// equally in the calling code.  The actors have to be defined
+/// slightly differently to make this work.  Here's a short example:
+///
+/// ```
+/// # use stakker::*;
+/// # use std::time::Instant;
+/// // Trait definition
+/// type Animal = Box<dyn AnimalTrait>;
+/// trait AnimalTrait {
+///     fn sound(&mut self, cx: CX![Animal]);
+/// }
+///
+/// struct Cat;
+/// impl Cat {
+///     fn init(_: CX![Animal]) -> Option<Animal> {
+///         Some(Box::new(Self))
+///     }
+/// }
+/// impl AnimalTrait for Cat {
+///     fn sound(&mut self, _: CX![Animal]) {
+///         println!("Miaow");
+///     }
+/// }
+///
+/// struct Dog;
+/// impl Dog {
+///     fn init(_: CX![Animal]) -> Option<Animal> {
+///         Some(Box::new(Self))
+///     }
+/// }
+/// impl AnimalTrait for Dog {
+///     fn sound(&mut self, _: CX![Animal]) {
+///         println!("Woof");
+///     }
+/// }
+///
+/// let mut stakker = Stakker::new(Instant::now());
+/// let s = &mut stakker;
+///
+/// // This variable can hold any kind of animal
+/// let mut animal: ActorOwn<Animal>;
+/// animal = actor_of_trait!(s, Animal, Cat::init(), ret_nop!());
+/// call!([animal], sound());
+/// animal = actor_of_trait!(s, Animal, Dog::init(), ret_nop!());
+/// call!([animal], sound());
+///
+/// // To separate creation and initialisation, do it this way:
+/// animal = actor_new!(s, Animal, ret_nop!());
+/// call!([animal], Cat::init());
+/// call!([animal], sound());
+///
+/// s.run(Instant::now(), false);
+/// ```
+///
+/// Implemented using [`ActorOwn::new`].
+///
+/// [`ActorOwn::new`]: struct.ActorOwn.html#method.new
+#[macro_export]
+macro_rules! actor_of_trait {
+    ($core:expr, $trait:ident, $type:ident :: $init:ident($($x:expr),* $(,)? ), $notify:expr) => {{
+        $crate::COVERAGE!(actor_2);
+        let notify = $notify;
+        let core = $core.access_core();
+        let actor = $crate::ActorOwn::<$trait>::new(core, notify);
+        $crate::call!([actor], <$type>::$init($($x),*));
+        actor
+    }};
+    ($core:expr, $trait:ident, <$type:ty> :: $init:ident($($x:expr),* $(,)? ), $notify:expr) => {{
+        $crate::COVERAGE!(actor_3);
+        let notify = $notify;
+        let core = $core.access_core();
+        let actor = $crate::ActorOwn::<$trait>::new(core, notify);
+        $crate::call!([actor], <$type>::$init($($x),*));
+        actor
+    }};
+}
+
 // Common code for `call!` etc
 #[doc(hidden)]
 #[macro_export]

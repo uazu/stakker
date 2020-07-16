@@ -46,6 +46,14 @@ impl<A: 'static> ActorOwn<A> {
         actor.rc.strong_inc();
         Self { actor }
     }
+
+    /// Convert into an anonymous owning reference.  See
+    /// [`ActorOwnAnon`].
+    ///
+    /// [`ActorOwnAnon`]: struct.ActorOwnAnon.html
+    pub fn anon(self) -> ActorOwnAnon {
+        ActorOwnAnon::new(self)
+    }
 }
 
 impl<A: 'static> Deref for ActorOwn<A> {
@@ -70,6 +78,72 @@ impl<A: 'static> Drop for ActorOwn<A> {
             self.actor
                 .defer(move |s| actor.terminate(s, StopCause::Dropped));
         }
+    }
+}
+
+/// An owning ref-counting reference to an anonymous actor
+///
+/// The purpose of this is to allow owning any one of a class of other
+/// actors without knowing the exact type.  The only operation this
+/// supports is dropping an owning reference to an actor when this
+/// value is dropped.  It can be used in combination with a [`Fwd`]
+/// instance to support plugging a variety of different actors into a
+/// standard interface, without needing traits.  As an alternative,
+/// see [`actor_of_trait!`].
+///
+/// Example, using [`ActorOwn::anon`] to create the anonymous
+/// reference:
+///
+/// ```
+/// # use stakker::*;
+/// # use std::time::Instant;
+/// struct Cat;
+/// impl Cat {
+///     fn init(_: CX![]) -> Option<Self> {
+///         Some(Self)
+///     }
+///     fn sound(&mut self, _: CX![]) {
+///         println!("Miaow");
+///     }
+/// }
+///
+/// struct Dog;
+/// impl Dog {
+///     fn init(_: CX![]) -> Option<Self> {
+///         Some(Self)
+///     }
+///     fn sound(&mut self, _: CX![]) {
+///         println!("Woof");
+///     }
+/// }
+///
+/// // This function doesn't know whether it's getting a cat or a dog,
+/// // but it can still call it and drop it when it has finished
+/// pub fn call_and_drop(sound: Fwd<()>, own: ActorOwnAnon) {
+///     fwd!([sound]);
+/// }
+///
+/// let mut stakker = Stakker::new(Instant::now());
+/// let s = &mut stakker;
+///
+/// let cat = actor!(s, Cat::init(), ret_nop!());
+/// call_and_drop(fwd_to!([cat], sound() as ()), cat.anon());
+///
+/// let dog = actor!(s, Dog::init(), ret_nop!());
+/// call_and_drop(fwd_to!([dog], sound() as ()), dog.anon());
+///
+/// s.run(Instant::now(), false);
+/// ```
+///
+/// [`ActorOwn::anon`]: struct.ActorOwn.html#method.anon
+/// [`Fwd`]: struct.Fwd.html
+/// [`actor_of_trait!`]: macro.actor_of_trait.html
+pub struct ActorOwnAnon(Box<dyn ActorOwnAnonTrait>);
+trait ActorOwnAnonTrait {}
+impl<T: 'static> ActorOwnAnonTrait for ActorOwn<T> {}
+impl ActorOwnAnon {
+    pub fn new<T: 'static>(actorown: ActorOwn<T>) -> Self {
+        Self(Box::new(actorown))
     }
 }
 

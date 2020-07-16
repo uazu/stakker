@@ -5,6 +5,21 @@ before 0.1.0 is allowed to make breaking changes.
 
 <!-- see keepachangelog.com for format ideas -->
 
+## 0.1.2 (2020-07-16)
+
+### Added
+
+- `actor_of_trait!`
+- `ActorOwnAnon`
+
+## 0.1.1 (2020-06-20)
+
+### Changed
+
+- Use `$crate::` instead of `stakker::` for macros
+- Accept trailing comma in more places in macro args
+- `'static` on `Actor::apply_prep` is not necessary
+
 ## 0.1.0 (2020-04-04)
 
 ### Changed

@@ -1,9 +1,9 @@
 //! Test macros
 
 use crate::{
-    actor, actor_new, after, at, call, fwd, fwd_do, fwd_nop, fwd_panic, fwd_to, idle, lazy, ret,
-    ret_do, ret_nop, ret_panic, ret_shutdown, ret_some_do, ret_some_to, ret_to, timer_max,
-    timer_min, Actor, Ret, Stakker, StopCause, CX,
+    actor, actor_new, actor_of_trait, after, at, call, fwd, fwd_do, fwd_nop, fwd_panic, fwd_to,
+    idle, lazy, ret, ret_do, ret_nop, ret_panic, ret_shutdown, ret_some_do, ret_some_to, ret_to,
+    timer_max, timer_min, Actor, ActorOwn, Ret, Stakker, StopCause, CX,
 };
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -471,6 +471,51 @@ fn fwd_misc() {
     ret!([ret], StopCause::Stopped);
     s.run(s.now(), false);
     assert!(!s.not_shutdown());
+}
+
+#[test]
+fn actor_of_trait() {
+    type Animal = Box<dyn AnimalTrait>;
+    trait AnimalTrait {
+        fn sound(&mut self, cx: CX![Animal], si: ScoreInc);
+    }
+    struct Cat;
+    impl Cat {
+        fn init(_: CX![Animal]) -> Option<Animal> {
+            Some(Box::new(Self))
+        }
+    }
+    impl AnimalTrait for Cat {
+        fn sound(&mut self, _: CX![Animal], si: ScoreInc) {
+            SCORE!(si);
+        }
+    }
+    struct Dog;
+    impl Dog {
+        fn init(_: CX![Animal]) -> Option<Animal> {
+            Some(Box::new(Self))
+        }
+    }
+    impl AnimalTrait for Dog {
+        fn sound(&mut self, _: CX![Animal], si: ScoreInc) {
+            SCORE!(si);
+        }
+    }
+
+    let mut stakker = Stakker::new(Instant::now());
+    let s = &mut stakker;
+    let mut aux = Aux::new(s);
+
+    // This variable can hold any kind of animal
+    let mut animal: ActorOwn<Animal>;
+    animal = actor_of_trait!(s, Animal, Cat::init(), ret_nop!());
+    call!([animal], sound(aux.si()));
+    // Also test other form of macro, with <...>
+    animal = actor_of_trait!(s, Animal, <Dog>::init(), ret_nop!());
+    call!([animal], sound(aux.si()));
+
+    aux.run(s);
+    aux.check_scores();
 }
 
 #[test]

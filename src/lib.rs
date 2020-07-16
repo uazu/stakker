@@ -449,7 +449,7 @@
 // rustfmt, but sometimes wraps strangely
 
 pub use crate::core::{Core, Stakker};
-pub use actor::{Actor, ActorOwn, Cx, StopCause};
+pub use actor::{Actor, ActorOwn, ActorOwnAnon, Cx, StopCause};
 pub use deferrer::Deferrer;
 pub use fwd::Fwd;
 pub use ret::Ret;

@@ -1,6 +1,6 @@
 #!/usr/bin/perl -w
 
-# Version: 2020-01-28
+# Version: 2020-07-16
 #
 # This code assumes that it owns all the `[...]: ...` definitions at
 # the end of each doc comment block.  It deletes them and rewrites
@@ -75,7 +75,7 @@ sub process_section {
     my %links = ();
     my $data = join('', @curr);
     $data =~ s/```.*?```//sg;
-    while ($data =~ /(\[`.*?`\])[^(]/g) {
+    while ($data =~ /(\[`[^`]+`\])[^(]/g) {
         $links{$1} = 1;
     }
     my @linkdefs = ();
@@ -101,6 +101,9 @@ sub process_section {
         } elsif ($tmp =~ /^\[`([A-Z][a-zA-Z0-9_]+)::([a-z][a-z0-9_]+)`\]$/) {
             push @href, "${path}struct.$1.html#method.$2";
             push @href, "../${path}struct.$1.html#method.$2" if $path ne '';
+        } elsif ($tmp =~ /^\[`([A-Z][a-zA-Z0-9_]+)::([A-Z][a-zA-Z0-9_]+)`\]$/) {
+            push @href, "${path}enum.$1.html#variant.$2";
+            push @href, "../${path}enum.$1.html#variant.$2" if $path ne '';
         } elsif ($tmp =~ /^\[`([a-z][a-z0-9_]+)!`\]$/) {
             push @href, "${path}macro.$1.html";
             push @href, "../${path}macro.$1.html" if $path ne '';
@@ -119,7 +122,7 @@ sub process_section {
                 if (defined $id) {
                     my $html = readfile($fnpath);
                     print "WARNING: Missing anchor '$id' in file: $fnpath\n" 
-                        unless $html =~ /'$id'/;
+                        unless $html =~ /['"]$id['"]/;
                 }
                 $found = 1;
                 last;
