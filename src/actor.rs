@@ -386,6 +386,29 @@ impl<A> Actor<A> {
         }
     }
 
+    /// Query an actor from outside the runtime.  This is a
+    /// synchronous call intended for use when interfacing to external
+    /// code.  Executes the closure on the actor immediately if the
+    /// actor has a `Self` value (i.e. is in the **Ready** state), and
+    /// returns the result.  Otherwise returns `None`.
+    #[inline]
+    pub fn query<R>(
+        &self,
+        s: &mut Stakker,
+        f: impl FnOnce(&mut A, &mut Cx<'_, A>) -> R,
+    ) -> Option<R> {
+        if let Some(val) = self.rc.borrow_ready(&mut s.actor_owner) {
+            let mut cx = Cx::new(&mut s.core, self);
+            let rv = f(val, &mut cx);
+            if let Some(die) = cx.die {
+                self.terminate(s, die);
+            }
+            Some(rv)
+        } else {
+            None
+        }
+    }
+
     /// This may be used to submit items to the [`Deferrer`] main
     /// queue from a drop handler, without needing a [`Core`]
     /// reference.
@@ -462,6 +485,12 @@ impl std::fmt::Display for StopCause {
             Self::Killed(e) => write!(f, "Actor was killed: {}", e),
             Self::Dropped => write!(f, "Actor was dropped"),
         }
+    }
+}
+
+impl std::fmt::Debug for StopCause {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self)
     }
 }
 

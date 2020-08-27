@@ -21,7 +21,10 @@ impl DeferrerAux {
         // Safety: Safe because the methods called within the unsafe
         // region do not do any operations which will attempt to get
         // another mutable reference to the queue
-        unsafe { QUEUE.with(move |qref| mem::swap(&mut *qref.get(), queue)) }
+        unsafe {
+            // Does nothing if it's being destroyed
+            let _ = QUEUE.try_with(move |qref| mem::swap(&mut *qref.get(), queue));
+        }
     }
 
     #[inline]
@@ -30,7 +33,8 @@ impl DeferrerAux {
         // region do not do any operations which will attempt to get
         // another mutable reference to the queue
         unsafe {
-            QUEUE.with(|qref| (&mut *qref.get()).push(f));
+            // Does nothing if it's being destroyed
+            let _ = QUEUE.try_with(|qref| (&mut *qref.get()).push(f));
         }
     }
 }

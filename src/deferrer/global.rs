@@ -14,10 +14,7 @@ static mut LOCKED_TO_THREAD: Option<ThreadId> = None;
 
 // QUEUE is only ever accessed by the thread registered in
 // LOCKED_TO_THREAD, which is guaranteed by the checks below.
-//
-// TODO: Remove the Option when FnOnceQueue::new() can be made const.
-// Right now Vec::new() isn't const due to some trait bound problem.
-static mut QUEUE: Option<FnOnceQueue<Stakker>> = None;
+static mut QUEUE: FnOnceQueue<Stakker> = FnOnceQueue::new();
 
 // Use *const to make it !Send and !Sync
 #[derive(Clone)]
@@ -33,7 +30,6 @@ impl DeferrerAux {
         unsafe {
             ONCE.call_once(|| {
                 LOCKED_TO_THREAD = Some(tid);
-                QUEUE = Some(FnOnceQueue::new());
             });
             assert_eq!(
                 LOCKED_TO_THREAD,
@@ -50,9 +46,7 @@ impl DeferrerAux {
         // see above.  The operation doesn't call into any method
         // which might also attempt to access the same global.
         unsafe {
-            if let Some(ref mut curr) = QUEUE {
-                mem::swap(curr, queue);
-            }
+            mem::swap(queue, &mut QUEUE);
         }
     }
 
@@ -62,9 +56,7 @@ impl DeferrerAux {
         // see above.  The operation doesn't call into any method
         // which might also attempt to access the same global.
         unsafe {
-            if let Some(ref mut queue) = QUEUE {
-                queue.push(f);
-            }
+            QUEUE.push(f);
         };
     }
 }

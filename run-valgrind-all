@@ -1,0 +1,75 @@
+#!/bin/bash
+
+# Filters out non-stakker-related valgrind backtrace lines
+filter() {
+        perl -e '
+while (<>) {
+    if (/   at 0x/) {
+        print $_ if /stakker/;
+        while (<>) {
+            last unless /   by 0x/;
+            if (/stakker/) {
+                print $_;
+            }
+        }
+        print $_;
+    } else {
+        print $_;
+    }
+}'
+}
+
+# This same script is called back from ./run-all-feature-comb.pl
+[ "$1" = "run-test" ] && {
+    # Run cargo test twice.  First builds and tests.  Second skips the
+    # build (already done) and just runs the test under valgrind.  We
+    # only want to valgrind the test, not all the build-related code.
+    cargo test --lib --no-default-features --features "$2" >/dev/null 2>&1 || {
+        # If it fails, repeat and show output, then fail
+        cargo test --lib --no-default-features --features "$2" 2>&1
+        echo FAILED
+        exit 1
+    }
+
+    # --log-file=log/valgrind_%p \
+    # --gen-suppressions=all \
+    # --show-leak-kinds=definite,indirect \
+    valgrind \
+        --tool=memcheck \
+        --trace-children=yes \
+        --leak-check=full \
+        --suppressions=tmp-valgrind-suppressions.txt \
+        --show-leak-kinds=definite \
+        --undef-value-errors=no \
+        cargo test --lib --no-default-features --features "$2" 2>&1 | filter
+    exit 0
+}
+
+cat >tmp-valgrind-suppressions.txt <<EOF
+{
+   uninteresting statx problem
+   Memcheck:Param
+   statx(file_name)
+   fun:syscall
+   fun:statx
+   fun:_ZN3std3sys4unix2fs9try_statx*
+   fun:_ZN3std3sys4unix2fs4stat*
+}
+{
+   uninteresting statx problem
+   Memcheck:Param
+   statx(buf)
+   fun:syscall
+   fun:statx
+   fun:_ZN3std3sys4unix2fs9try_statx*
+   fun:_ZN3std3sys4unix2fs4stat*
+}
+EOF
+
+./run-all-feature-comb.pl $0 run-test 2>&1 | tee tmp-valgrind.log
+
+rm tmp-valgrind-suppressions.txt
+
+echo ""
+echo "SUMMARY:   (see tmp-valgrind.log for details)"
+fgrep definitely tmp-valgrind.log

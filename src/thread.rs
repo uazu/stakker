@@ -31,6 +31,23 @@ struct QueuesInner<O: Send + Sync + 'static, I: Send + Sync + 'static> {
 /// different kinds of data (e.g. messages, commands or responses as
 /// required).
 ///
+/// This is useful for offloading synchronous or blocking work to
+/// another thread.  So the normal pattern of use would be for the
+/// thread to block on [`PipedLink::recv`] until it gets something to
+/// process.  Processing could involve sending messages on other
+/// channels or streams and waiting for replies, or running data in
+/// parallel through a thread pool.  Processing the received message
+/// might or might not result in a message to send back with
+/// [`PipedLink::send`].  Another use could be for blocking input,
+/// where the thread waits on a device, and uses [`PipedLink::send`]
+/// to pass back received data.
+///
+/// The only thing that this thread can't do is wait for both
+/// [`PipedLink::recv`] and some other input at the same time.  If you
+/// need that, for now you'll need to write your own interface code to
+/// `crossbeam` or some other channel library, using [`Waker`] to
+/// interface back to **Stakker**.
+///
 /// Cleanup is handled as follows:
 ///
 /// - If the thread terminates normally or panics, then the underlying
@@ -47,6 +64,8 @@ struct QueuesInner<O: Send + Sync + 'static, I: Send + Sync + 'static> {
 /// care of thread cleanup automatically if the actor fails
 /// unexpectedly.
 ///
+/// [`PipedLink::recv`]: struct.PipedLink.html#method.recv
+/// [`PipedLink::send`]: struct.PipedLink.html#method.send
 /// [`PipedThread`]: struct.PipedThread.html
 /// [`Waker`]: struct.Waker.html
 pub struct PipedThread<O: Send + Sync + 'static, I: Send + Sync + 'static> {

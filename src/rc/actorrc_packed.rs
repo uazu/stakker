@@ -3,9 +3,11 @@
 // the count value.
 //
 // TODO: We could save another 8 bytes by using ptr::read/write
-// instead of the Inner enum, but make that a separate implementation
-// because the unsafe review would be harder (i.e. some people would
-// prefer this one).
+// instead of the Inner enum.  However that is impossible right now
+// because `union` only supports Copy types.  Also maybe better make
+// that a separate implementation because the unsafe review would be
+// harder (i.e. some people would prefer this one).
+
 use crate::actor::{Prep, State};
 use crate::cell::cell::{ActorCell, ActorCellOwner};
 use crate::queue::FnOnceQueue;

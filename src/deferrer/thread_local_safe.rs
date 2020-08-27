@@ -18,11 +18,13 @@ impl DeferrerAux {
     }
 
     pub(crate) fn swap_queue(&self, queue: &mut FnOnceQueue<Stakker>) {
-        QUEUE.with(move |qref| mem::swap(&mut *qref.borrow_mut(), queue));
+        // Does nothing if it's being destroyed
+        let _ = QUEUE.try_with(move |qref| mem::swap(&mut *qref.borrow_mut(), queue));
     }
 
     #[inline]
     pub fn defer(&self, f: impl FnOnce(&mut Stakker) + 'static) {
-        QUEUE.with(|qref| qref.borrow_mut().push(f));
+        // Does nothing if it's being destroyed
+        let _ = QUEUE.try_with(|qref| qref.borrow_mut().push(f));
     }
 }

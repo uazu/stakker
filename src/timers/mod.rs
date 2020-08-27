@@ -5,6 +5,14 @@ use std::collections::BTreeMap;
 use std::mem;
 use std::time::{Duration, Instant};
 
+// TODO: Switch to N-ary Heap for storing (WrapTime, slot-index),
+// e.g. Octonary heap, and use slots for normal timers as well as
+// min/max.  Octonary heap because that means each level is a cache
+// line.  So to pick the next, you have to scan 8 items, but they're
+// all in one cache line so that's okay.  So reorganization of the
+// tree is much cheaper.  Code for a heap should be a lot cheaper than
+// BTreeMap, which generates a huge amount of assembler.
+
 /// Timer key for a fixed timer
 ///
 /// Returned by [`Core::timer_add`] or [`Core::after`].  It can be
@@ -269,7 +277,7 @@ impl<S: 'static> Timers<S> {
                             queue.push_box(bfn);
                             self.free_slot(key.slot);
                         } else {
-                            // Set timer 75% to current expiry time
+                            // Set timer to 75% current expiry time
                             vt.curr =
                                 rounded_75point(self.now, vt.expiry.min(self.now.add_secs(0x7FFF)));
                             self.queue
@@ -296,7 +304,7 @@ impl<S: 'static> Timers<S> {
             if i >= 0x8000_0000 {
                 panic!("Exceeded 2^31 variable timers at the same time");
             }
-            // Start at gen==1 so that Default on keys doesn't match
+            // Start at gen==1 so that `Default` on keys doesn't match
             // anything
             self.var.push(VarSlot { gen: 1, item });
             (i as u32, 1)
@@ -305,7 +313,7 @@ impl<S: 'static> Timers<S> {
 
     fn free_slot(&mut self, i: u32) {
         let slot = &mut self.var[i as usize];
-        slot.gen = slot.gen.wrapping_add(1);
+        slot.gen = slot.gen.wrapping_add(1).max(1); // Avoid gen==0, reserved for Default
         if let VarItem::Free(_) = slot.item {
             panic!("Timers: deleting slot that was already free");
         }
@@ -346,23 +354,24 @@ impl<S: 'static> Timers<S> {
         // have 2^31 unique values per 15us instant, and we cycle
         // constantly, so the next caller will get a different unique
         // value.  Almost always the first attempt will succeed.
-        // Otherwise we retry, and eventually panic if we run out of
-        // unique values.
-        let looped = self.seq | 0x8000_0000;
+        // Otherwise we try all the 2^31 slots for this instant, then
+        // try the next instant and so on.  This must succeed, because
+        // the address space is not big enough to contain 2^63 active
+        // timers, so there will always be a slot free somewhere.
+        let mut wt = expiry.wt();
         loop {
-            self.seq = self.seq.wrapping_add(1);
-            let slot = self.seq | 0x8000_0000;
-            if let Entry::Vacant(ent) = self.queue.entry(TimerKey::new(expiry.wt(), slot)) {
-                ent.insert(bfn);
-                return FixedTimerKey {
-                    slot,
-                    gen_or_time: expiry.wt().0,
-                };
+            for _ in 0..0x8000_0000u32 {
+                self.seq = self.seq.wrapping_add(1);
+                let slot = self.seq | 0x8000_0000;
+                if let Entry::Vacant(ent) = self.queue.entry(TimerKey::new(wt, slot)) {
+                    ent.insert(bfn);
+                    return FixedTimerKey {
+                        slot,
+                        gen_or_time: wt.0,
+                    };
+                }
             }
-            assert_ne!(
-                slot, looped,
-                "More than 2^31 timers have been set to expire at the same instant"
-            );
+            wt.0 = wt.0.wrapping_add(1);
         }
     }
 

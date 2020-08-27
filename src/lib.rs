@@ -445,9 +445,6 @@
 // TODO: Illustrate Fwd in the tutorial example, e.g. make println!
 // output go via a Fwd
 
-// TODO: Switch to [cx].method maybe?  Takes up less space with
-// rustfmt, but sometimes wraps strangely
-
 pub use crate::core::{Core, Stakker};
 pub use actor::{Actor, ActorOwn, ActorOwnAnon, Cx, StopCause};
 pub use deferrer::Deferrer;
@@ -489,8 +486,10 @@ mod waker;
 
 #[cfg(test)]
 mod test {
+    mod extra;
     mod macro_coverage;
     mod macros;
+    mod memsizes;
 }
 
 // Ref-counting selections

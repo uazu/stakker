@@ -1,0 +1,45 @@
+#!/bin/bash
+
+echo "(This intentionally leaks some memory in order to measure it)"
+echo ""
+
+for xx in \
+    "" \
+        "--features no-unsafe" \
+        "--all-features"
+do
+    echo "=== Testing: $xx"
+
+    # Run cargo test twice.  First builds and tests.  Second skips the
+    # build (already done) and just runs the test under valgrind.  We only
+    # want to valgrind the test, not building-related stuff.
+    cargo test --lib test::memsizes::actor_size $xx 2>&1
+
+    STAKKER_ENABLE_TEST_MEMSIZES=1 \
+    valgrind \
+        --tool=memcheck \
+        --trace-children=yes \
+        --leak-check=full \
+        --show-leak-kinds=definite,indirect \
+        --undef-value-errors=no \
+        cargo test --lib test::memsizes::actor_size $xx 2>&1  |
+        perl -e '
+while (<>) {
+    if (/ indirectly lost /) {
+        print $_;
+        while (<>) {
+            last unless /by |at /;
+            if (/stakker/) {
+                print $_;
+                while (<>) {
+                    last unless /stakker/;
+                    last if /test/;
+                    print $_;
+                }
+                last;
+            }
+        }
+    }
+}'
+
+done

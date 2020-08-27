@@ -50,26 +50,40 @@ macro_rules! indices {
     { $crate::$cb!( $($args)* ) };
     ( [ ] $($rest:tt)* ) =>
     { $crate::indices!($($rest)* []) };
-    ( [ $x0:tt ] $($rest:tt)* ) =>
+    ( [ $a:tt ] $($rest:tt)* ) =>
     { $crate::indices!($($rest)* [ 0 ]) };
-    ( [ $x0:tt $x1:tt ] $($rest:tt)* ) =>
+    ( [ $a:tt $b:tt ] $($rest:tt)* ) =>
     { $crate::indices!($($rest)* [ 0 1 ]) };
-    ( [ $x0:tt $x1:tt $x2:tt ] $($rest:tt)* ) =>
+    ( [ $a:tt $b:tt $c:tt ] $($rest:tt)* ) =>
     { $crate::indices!($($rest)* [ 0 1 2 ]) };
-    ( [ $x0:tt $x1:tt $x2:tt $x3:tt ] $($rest:tt)* ) =>
+    ( [ $a:tt $b:tt $c:tt $d:tt ] $($rest:tt)* ) =>
     { $crate::indices!($($rest)* [ 0 1 2 3 ]) };
-    ( [ $x0:tt $x1:tt $x2:tt $x3:tt $x4:tt ] $($rest:tt)* ) =>
+    ( [ $a:tt $b:tt $c:tt $d:tt $e:tt ] $($rest:tt)* ) =>
     { $crate::indices!($($rest)* [ 0 1 2 3 4 ]) };
-    ( [ $x0:tt $x1:tt $x2:tt $x3:tt $x4:tt $x5:tt ] $($rest:tt)* ) =>
+    ( [ $a:tt $b:tt $c:tt $d:tt $e:tt $f:tt ] $($rest:tt)* ) =>
     { $crate::indices!($($rest)* [ 0 1 2 3 4 5 ]) };
-    ( [ $x0:tt $x1:tt $x2:tt $x3:tt $x4:tt $x5:tt $x6:tt ] $($rest:tt)* ) =>
+    ( [ $a:tt $b:tt $c:tt $d:tt $e:tt $f:tt $g:tt ] $($rest:tt)* ) =>
     { $crate::indices!($($rest)* [ 0 1 2 3 4 5 6 ]) };
-    ( [ $x0:tt $x1:tt $x2:tt $x3:tt $x4:tt $x5:tt $x6:tt $x7:tt ] $($rest:tt)* ) =>
+    ( [ $a:tt $b:tt $c:tt $d:tt $e:tt $f:tt $g:tt $h:tt ] $($rest:tt)* ) =>
     { $crate::indices!($($rest)* [ 0 1 2 3 4 5 6 7 ]) };
-    ( [ $x0:tt $x1:tt $x2:tt $x3:tt $x4:tt $x5:tt $x6:tt $x7:tt $x8:tt ] $($rest:tt)* ) =>
+    ( [ $a:tt $b:tt $c:tt $d:tt $e:tt $f:tt $g:tt $h:tt $i:tt ] $($rest:tt)* ) =>
     { $crate::indices!($($rest)* [ 0 1 2 3 4 5 6 7 8 ]) };
-    ( [ $x0:tt $x1:tt $x2:tt $x3:tt $x4:tt $x5:tt $x6:tt $x7:tt $x8:tt $x9:tt ] $($rest:tt)* ) =>
+    ( [ $a:tt $b:tt $c:tt $d:tt $e:tt $f:tt $g:tt $h:tt $i:tt $j:tt ] $($rest:tt)* ) =>
     { $crate::indices!($($rest)* [ 0 1 2 3 4 5 6 7 8 9 ]) };
+    ( [ $a:tt $b:tt $c:tt $d:tt $e:tt $f:tt $g:tt $h:tt $i:tt $j:tt $k:tt  ] $($rest:tt)* ) =>
+    { $crate::indices!($($rest)* [ 0 1 2 3 4 5 6 7 8 9 10 ]) };
+    ( [ $a:tt $b:tt $c:tt $d:tt $e:tt $f:tt $g:tt $h:tt $i:tt $j:tt $k:tt $l:tt  ] $($rest:tt)* ) =>
+    { $crate::indices!($($rest)* [ 0 1 2 3 4 5 6 7 8 9 10 11 ]) };
+    ( [ $a:tt $b:tt $c:tt $d:tt $e:tt $f:tt $g:tt $h:tt $i:tt $j:tt $k:tt $l:tt $m:tt  ] $($rest:tt)* ) =>
+    { $crate::indices!($($rest)* [ 0 1 2 3 4 5 6 7 8 9 10 11 12 ]) };
+    ( [ $a:tt $b:tt $c:tt $d:tt $e:tt $f:tt $g:tt $h:tt $i:tt $j:tt $k:tt $l:tt $m:tt $n:tt ] $($rest:tt)* ) =>
+    { $crate::indices!($($rest)* [ 0 1 2 3 4 5 6 7 8 9 10 11 12 13 ]) };
+    ( [ $a:tt $b:tt $c:tt $d:tt $e:tt $f:tt $g:tt $h:tt $i:tt $j:tt $k:tt $l:tt $m:tt $n:tt $o:tt ] $($rest:tt)* ) =>
+    { $crate::indices!($($rest)* [ 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 ]) };
+    ( [ $a:tt $b:tt $c:tt $d:tt $e:tt $f:tt $g:tt $h:tt $i:tt $j:tt $k:tt $l:tt $m:tt $n:tt $o:tt $p:tt ] $($rest:tt)* ) =>
+    { $crate::indices!($($rest)* [ 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 ]) };
+    ( $($rest:tt)* ) =>
+    { std::compile_error!("Too many arguments in call"); }
 }
 
 // Used to insert empty function calls in test mode which let us test

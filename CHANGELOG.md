@@ -5,6 +5,26 @@ before 0.1.0 is allowed to make breaking changes.
 
 <!-- see keepachangelog.com for format ideas -->
 
+## 0.1.3 (2020-08-27)
+
+### Added
+
+- Valgrind testing script
+- Virtual SystemTime: `cx.systime()` and `stakker.set_systime()`
+- Synchronous actor queries from outside runtime: `actor.query()`
+
+### Changed
+
+- 'flat' FnOnce queue simplifications and improvements
+- Global-based Deferrer access is now branch-free
+- General optimisations on hot paths
+
+### Fixed
+
+- Fixed memory leak in 'flat' FnOnce queue cleanup
+- Fixed memory leak in Stakker cleanup with inline Deferrer
+- Fixed issue with TLS-based Deferrer on cleanup
+
 ## 0.1.2 (2020-07-16)
 
 ### Added

@@ -5,3 +5,4 @@ Cargo.lock
 EXPORT
 *.org
 kcov*
+**/tmp*

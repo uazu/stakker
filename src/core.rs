@@ -7,7 +7,7 @@ use crate::{Deferrer, FixedTimerKey, MaxTimerKey, MinTimerKey, StopCause, Waker}
 use std::collections::VecDeque;
 use std::mem;
 use std::ops::{Deref, DerefMut};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 /// The external interface to the actor runtime
 ///
@@ -25,8 +25,7 @@ use std::time::{Duration, Instant};
 pub struct Stakker {
     pub(crate) core: Core,
     pub(crate) actor_owner: ActorCellOwner,
-    alt_main_queue: FnOnceQueue<Stakker>,
-    alt_lazy_queue: FnOnceQueue<Stakker>,
+    alt_queues: Option<(FnOnceQueue<Stakker>, FnOnceQueue<Stakker>)>,
     recreate_queues_time: Instant,
 }
 
@@ -42,8 +41,7 @@ impl Stakker {
         Self {
             core: Core::new(now, actor_maker),
             actor_owner,
-            alt_main_queue: FnOnceQueue::new(),
-            alt_lazy_queue: FnOnceQueue::new(),
+            alt_queues: Some((FnOnceQueue::new(), FnOnceQueue::new())),
             recreate_queues_time: now + Duration::from_secs(60),
         }
     }
@@ -119,8 +117,8 @@ impl Stakker {
         // them.  (Also the borrow checker complains.)
 
         // Run main queue and timers
-        let mut alt_main = mem::replace(&mut self.alt_main_queue, FnOnceQueue::new());
-        let mut alt_lazy = mem::replace(&mut self.alt_lazy_queue, FnOnceQueue::new());
+        let (mut alt_main, mut alt_lazy) =
+            (self.alt_queues.take()).expect("Previous run call must have panicked");
         self.core.deferrer.swap_queue(&mut alt_main);
         if now > self.core.now {
             self.core.now = now;
@@ -142,19 +140,26 @@ impl Stakker {
             }
             break;
         }
-        self.alt_main_queue = alt_main;
-        self.alt_lazy_queue = alt_lazy;
+        self.alt_queues = Some((alt_main, alt_lazy));
 
         // Recreate the queues?  They will all be empty at this point.
         if now > self.recreate_queues_time {
-            self.alt_main_queue = FnOnceQueue::new();
-            self.alt_lazy_queue = FnOnceQueue::new();
+            self.alt_queues = Some((FnOnceQueue::new(), FnOnceQueue::new()));
             self.core.lazy_queue = FnOnceQueue::new();
             self.core.deferrer.set_queue(FnOnceQueue::new());
             self.recreate_queues_time = now + Duration::from_secs(60);
         }
 
         !self.core.idle_queue.is_empty()
+    }
+
+    /// Set the current `SystemTime`, for use in a virtual time main
+    /// loop.  If `None` is passed, then `core.systime()` just calls
+    /// `SystemTime::now()`.  Otherwise `core.systime()` returns the
+    /// provided `SystemTime` instead.
+    #[inline]
+    pub fn set_systime(&mut self, systime: Option<SystemTime>) {
+        self.core.systime = systime;
     }
 
     /// Put a value into the `anymap`.  This can be accessed using the
@@ -250,6 +255,27 @@ impl DerefMut for Stakker {
     }
 }
 
+impl Drop for Stakker {
+    fn drop(&mut self) {
+        // The defer queue may contain items that have circular
+        // references back to the defer queue via a Deferrer, which
+        // means they never get freed.  In addition when an actor
+        // referenced from the queue is dropped, it may queue a
+        // handler, which in turn holds a circular reference.  So
+        // special handling is required to avoid leaking memory on
+        // Stakker termination.  Limit this to 99 attempts just to
+        // avoid the possibility of an infinite loop.
+        for _ in 0..99 {
+            let mut alt_main = FnOnceQueue::new();
+            self.core.deferrer.swap_queue(&mut alt_main);
+            if alt_main.is_empty() {
+                break;
+            }
+            drop(alt_main);
+        }
+    }
+}
+
 /// Core operations available from both [`Stakker`] and [`Cx`] objects
 ///
 /// Both [`Stakker`] and [`Cx`] references auto-dereference to a
@@ -270,6 +296,7 @@ pub struct Core {
     pub(crate) actor_maker: ActorCellMaker,
     #[cfg(feature = "anymap")]
     anymap: anymap::Map,
+    systime: Option<SystemTime>,
     wake_handlers: WakeHandlers,
     wake_handlers_unset: bool,
 }
@@ -296,6 +323,7 @@ impl Core {
             actor_maker,
             #[cfg(feature = "anymap")]
             anymap: anymap::Map::new(),
+            systime: None,
             wake_handlers: WakeHandlers::new(Box::new(|| unreachable!())),
             wake_handlers_unset: true,
         }
@@ -307,6 +335,26 @@ impl Core {
     #[inline]
     pub fn now(&self) -> Instant {
         self.now
+    }
+
+    /// Get the current `SystemTime`.  Normally this returns the same
+    /// as `SystemTime::now()`, but if running in virtual time, it
+    /// would return the virtual `SystemTime` instead (as provided to
+    /// [`Stakker::set_systime`] by the virtual time main loop).  Note
+    /// that this time is not suitable for timing things, as it may go
+    /// backwards if the user or a system process adjusts the clock.
+    /// It is just useful for showing or recording "human time" for
+    /// the user, and for recording times that are meaningful on a
+    /// longer scale, e.g. from one run of a process to the next.
+    ///
+    /// [`Stakker::set_systime`]: struct.Stakker.html#method.set_systime
+    #[inline]
+    pub fn systime(&self) -> SystemTime {
+        if let Some(time) = self.systime {
+            time
+        } else {
+            SystemTime::now()
+        }
     }
 
     /// Defer an operation to be executed later.  It is put on the
