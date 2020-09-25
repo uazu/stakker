@@ -1,0 +1,8 @@
+[package]
+name = "fuzzing"
+version = "0.1.0"
+authors = ["Jim Peters <jim@uazu.net>"]
+edition = "2018"
+
+[dependencies]
+stakker = { path = "../.." }

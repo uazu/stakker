@@ -8,6 +8,9 @@ impl<S> FnOnceQueue<S> {
         Self { vec: Vec::new() }
     }
 
+    /// Check that internal implementation assumptions are valid
+    pub fn sanity_check() {}
+
     /// Push a `FnOnce` callback onto the queue.
     #[inline]
     pub fn push(&mut self, value: impl FnOnce(&mut S) + 'static) {

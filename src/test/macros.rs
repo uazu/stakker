@@ -100,9 +100,9 @@ impl A {
     fn fwd_test(&mut self, cx: CX![], si1: ScoreInc, si2: ScoreInc, si3: ScoreInc) {
         let fwd = fwd_to!([cx], check() as (ScoreInc));
         fwd!([fwd], si1);
-        let fwd = fwd_to!([cx], |_this, _cx, si: ScoreInc| SCORE!(si));
+        let fwd = fwd_to!([cx], |_, _, si: ScoreInc| SCORE!(si));
         fwd!([fwd], si2);
-        let fwd = fwd_to!([cx], |_this, _cx, si: ScoreInc, v: u8| {
+        let fwd = fwd_to!([cx], |_, _, si: ScoreInc, v: u8| {
             assert_eq!(v, 99);
             SCORE!(si);
         });
@@ -133,7 +133,7 @@ impl A {
         assert_eq!(rv, Some(123));
         call!(
             [b],
-            get(ret_to!([cx], |_this, _cx, rv: Option<u8>| {
+            get(ret_to!([cx], |_, _, rv: Option<u8>| {
                 assert_eq!(rv, Some(123));
                 SCORE!(si);
             }))
@@ -158,7 +158,7 @@ impl A {
         assert_eq!(rv, 123);
         call!(
             [b],
-            get(ret_some_to!([cx], |_this, _cx, rv: u8| {
+            get(ret_some_to!([cx], |_, _, rv: u8| {
                 assert_eq!(rv, 123);
                 SCORE!(si);
             }))
@@ -310,7 +310,7 @@ fn actor_calls() {
 
     // Test Stakker closure call
     let si = aux.si();
-    call!([s], |_s| SCORE!(si));
+    call!([s], |_| SCORE!(si));
 
     aux.run(s);
     aux.check_scores();
@@ -470,7 +470,13 @@ fn fwd_misc() {
     assert!(s.not_shutdown());
     ret!([ret], StopCause::Stopped);
     s.run(s.now(), false);
-    assert!(!s.not_shutdown());
+    assert!(matches!(s.shutdown_reason(), Some(StopCause::Stopped)));
+
+    let ret = ret_shutdown!(s);
+    assert!(s.not_shutdown());
+    drop(ret);
+    s.run(s.now(), false);
+    assert!(matches!(s.shutdown_reason(), Some(StopCause::Dropped)));
 }
 
 #[test]

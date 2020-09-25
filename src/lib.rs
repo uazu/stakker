@@ -1,12 +1,23 @@
+//! [![license:MIT/Apache-2.0][1]](https://github.com/uazu/stakker)&nbsp;
+//! [![github:uazu/stakker][2]](https://github.com/uazu/stakker)&nbsp;
+//! [![crates.io:stakker][3]](https://crates.io/crates/stakker)&nbsp;
+//! [![docs.rs:stakker][4]](https://docs.rs/stakker)
+//!
+//! [1]: https://img.shields.io/badge/license-MIT%2FApache--2.0-blue
+//! [2]: https://img.shields.io/badge/github-uazu%2Fstakker-brightgreen
+//! [3]: https://img.shields.io/badge/crates.io-stakker-red
+//! [4]: https://img.shields.io/badge/docs.rs-stakker-purple
+//!
 //! **Stakker** is a lightweight low-level single-threaded actor
 //! runtime.  It is designed to be layered on top of whatever event
-//! loop the user prefers to use.  Asynchronous calls are addressed to
-//! individual methods within an actor, rather like Pony behaviours.
-//! All calls and argument types are known and statically checked at
-//! compile-time giving the optimiser a lot of scope.  **Stakker**
-//! also provides a timer queue for timeouts or delayed calls, a lazy
-//! queue to allow batching recent operations, and an idle queue for
-//! running a call when nothing else is outstanding.
+//! source or main loop the user prefers to use.  Asynchronous calls
+//! are addressed to individual methods within an actor, rather like
+//! Pony behaviours.  All calls and argument types are known and
+//! statically checked at compile-time giving the optimiser a lot of
+//! scope.  **Stakker** also provides a timer queue for timeouts or
+//! delayed calls, a lazy queue to allow batching recent operations,
+//! and an idle queue for running a call when nothing else is
+//! outstanding.
 //!
 //! By default **Stakker** uses unsafe code for better time and memory
 //! efficiency.  However if you prefer to avoid unsafe code, then
@@ -18,9 +29,11 @@
 //! - [Overview of types](#overview-of-types)
 //! - [Efficiency](#efficiency)
 //! - [Cargo features](#cargo-features)
+//! - [Testing](#testing)
 //! - [Tutorial example](#tutorial-example)
 //! - [Main loop examples](#main-loop-examples)
 //! - [Why the name **Stakker**?](#why-the-name-stakker)
+//!
 //!
 //! # Overview of types
 //!
@@ -66,6 +79,7 @@
 //! and handles all data transfer to/from it and all cleanup.
 //! [`Waker`] is a primitive which allows channels and other data
 //! transfer to the main thread to be coordinated.
+//!
 //!
 //! # Efficiency
 //!
@@ -127,19 +141,23 @@
 //!
 //! # Cargo features
 //!
-//! Cargo features are additive.  This means that if one use of a
-//! crate enables a feature, it is enabled for all uses of that crate
-//! in the build.  So when features switch between alternative
-//! implementations, it's necessary to decide whether to make the
-//! feature a negative or positive switch, depending on which of two
-//! options is more tolerant when different uses of the crate within
-//! the build have different needs.
+//! Cargo features in **Stakker** do not change **Stakker**'s public
+//! API.  The API stays the same, but the implementation behind the
+//! API changes.
 //!
-//! When a crate using this crate doesn't care about whether a feature
-//! is enabled or not, it should avoid setting it and leave it up to
-//! the application to choose.  Note that features do not change the
-//! public API of the crate, although disabling the enabled-by-default
-//! features will cause disabled operations to panic.
+//! Also, cargo features are additive.  This means that if one crate
+//! using **Stakker** enables a feature, then it is enabled for all
+//! uses of **Stakker** in the build.  So when features switch between
+//! alternative implementations, enabling a feature has to result in
+//! the more tolerant implementation, because all users of the crate
+//! have to be able to work with this configuration.  This usually
+//! means that features switch from the most efficient and restrictive
+//! implementation, to a less efficient but more flexible one.
+//!
+//! So using the default features is the best choice unless you have
+//! specific requirements.  When a crate that uses **Stakker** doesn't
+//! care about whether a feature is enabled or not, it should avoid
+//! setting it and leave it up to the application to choose.
 //!
 //! Enabled by default:
 //!
@@ -200,7 +218,7 @@
 //! - `QCell`: Allows many **Stakker** instances per thread at some
 //! cost in time and memory
 //!
-//! ### Drop deferrer
+//! ### Deferrer
 //!
 //! - Global deferrer: Uses a global variable to find the [`Deferrer`]
 //!
@@ -219,10 +237,20 @@
 //!
 //! ### Call queues
 //!
-//! - Fast `FnOnce` queue: Stores `FnOnce` closures directly in a flat
-//! `Vec<u8>`.  Gives best performance, but uses `unsafe` code.
+//! - Fast `FnOnce` queue: Appends `FnOnce` closures directly to a
+//! flat memory buffer.  Gives best performance, but uses `unsafe`
+//! code.
 //!
-//! - Boxed queue: Stores closures indirectly through boxing them
+//! - Boxed queue: Stores closures indirectly by boxing them
+//!
+//!
+//! # Testing
+//!
+//! **Stakker** has unit and doc tests that give over 90% coverage
+//! across all feature combinations.  These tests also run cleanly
+//! under valgrind and MIRI.  In addition there are some fuzz tests
+//! and stress tests under `extra/` that further exercise particular
+//! components to verify that they operate as expected.
 //!
 //!
 //! # Tutorial example
@@ -485,12 +513,7 @@ mod timers;
 mod waker;
 
 #[cfg(test)]
-mod test {
-    mod extra;
-    mod macro_coverage;
-    mod macros;
-    mod memsizes;
-}
+mod test;
 
 // Ref-counting selections
 #[cfg(not(feature = "no-unsafe"))]

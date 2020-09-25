@@ -5,11 +5,39 @@ before 0.1.0 is allowed to make breaking changes.
 
 <!-- see keepachangelog.com for format ideas -->
 
+## 0.1.4 (2020-09-27)
+
+### Added
+
+- `Core::share_rw2` and `Core::share_rw3` to allow borrowing 2 or 3
+  `Share` instances at once
+- Allow using `_` in initial closure arguments within macros.  For
+  example `|_this, _cx|` can now be written `|_, _|`
+
+### Fixed
+
+- `PipedThread` now notifies thread as documented if the actor holding
+  the `PipedThread` dies.
+- `PipedThread` now reports back panic string correctly if thread
+  panics and the panic was made with a `String` or `&str`.
+- A timer set at `cx.now()` in virtual time now executes correctly.
+- The flat `FnOnce` queue has been fixed to run cleanly under MIRI
+
+### Testing
+
+- Stress tests of `Waker` across threads (to detect races)
+- Stress test of flat `FnOnce` queue expansion
+- Fuzz-testing of timer queue
+- Fuzz-testing of flat `FnOnce` queue
+- Unit tests of queue and timers using small corpora derived from fuzz tests
+- Unit tests for `Actor`, `StopCause`, `Share`, `Waker` and `PipedThread`
+- Coverage now at 91%
+- Tests pass when running under MIRI
+
 ## 0.1.3 (2020-08-27)
 
 ### Added
 
-- Valgrind testing script
 - Virtual SystemTime: `cx.systime()` and `stakker.set_systime()`
 - Synchronous actor queries from outside runtime: `actor.query()`
 
@@ -24,6 +52,10 @@ before 0.1.0 is allowed to make breaking changes.
 - Fixed memory leak in 'flat' FnOnce queue cleanup
 - Fixed memory leak in Stakker cleanup with inline Deferrer
 - Fixed issue with TLS-based Deferrer on cleanup
+
+### Testing
+
+- Valgrind testing script
 
 ## 0.1.2 (2020-07-16)
 
@@ -55,9 +87,6 @@ before 0.1.0 is allowed to make breaking changes.
 - `Ret` type for compile-time checking of single use, instead of old
   `fwd_once_to!` implementation (now dropped).
 
-- Coverage testing with kcov, and many more tests.  Includes coverage
-  testing of macros.
-
 - `cx: CX![]` to save on actor method boiler-plate
 
 ### Changed
@@ -78,6 +107,11 @@ before 0.1.0 is allowed to make breaking changes.
 
 - `Core::timer_max` dropped in favour of `timer_max!` macro which is
   more efficient.  Similarly for `timer_min`.
+
+### Testing
+
+- Coverage testing with kcov, and many more tests.  Includes coverage
+  testing of macros.
 
 ## 0.0.1 (2020-01-23)
 

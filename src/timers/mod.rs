@@ -108,6 +108,10 @@ impl Time {
         Self(self.0 + (u64::from(secs) << 16))
     }
 
+    pub fn inc(self) -> Time {
+        Self(self.0 + 1)
+    }
+
     pub fn instant(self, t0: Instant) -> Instant {
         t0 + Duration::new(self.0 >> 16, ((self.0 & 0xFFFF) as u32) << 14)
     }
@@ -339,7 +343,9 @@ impl<S: 'static> Timers<S> {
     // Add a fixed timer.  A fixed timer can only expire or be
     // deleted.
     pub(crate) fn add(&mut self, expiry_time: Instant, bfn: BoxedFnOnce<S>) -> FixedTimerKey {
-        let expiry = Time::new_ceil(expiry_time, self.t0).max(self.now);
+        // We must never add a timer with exactly self.now, because
+        // code won't run to advance time unless the time changes
+        let expiry = Time::new_ceil(expiry_time, self.t0).max(self.now.inc());
         if expiry >= self.now.add_secs(0x7FFF) {
             // Add it as a var-timer, so it will keep rescheduling
             // itself until it reaches the target time
@@ -401,7 +407,7 @@ impl<S: 'static> Timers<S> {
     // queue.  A new timer is set only when the old timer expires.
     pub(crate) fn add_max(&mut self, expiry_time: Instant, bfn: BoxedFnOnce<S>) -> MaxTimerKey {
         let expiry = Time::new_ceil(expiry_time, self.t0);
-        let curr = expiry.max(self.now).min(self.now.add_secs(0x7FFF));
+        let curr = expiry.max(self.now.inc()).min(self.now.add_secs(0x7FFF));
         let (slot, gen) = self.alloc_slot(VarItem::Max(VarTimer { expiry, curr }));
         self.queue.insert(TimerKey::new(curr.wt(), slot), bfn);
         MaxTimerKey { slot, gen }
@@ -461,8 +467,8 @@ impl<S: 'static> Timers<S> {
     pub(crate) fn add_min(&mut self, expiry_time: Instant, bfn: BoxedFnOnce<S>) -> MinTimerKey {
         let expiry = Time::new_ceil(expiry_time, self.t0);
         let curr = rounded_75point(
-            self.now,
-            expiry.max(self.now).min(self.now.add_secs(0x7FFF)),
+            self.now.inc(),
+            expiry.max(self.now.inc()).min(self.now.add_secs(0x7FFF)),
         );
         let (slot, gen) = self.alloc_slot(VarItem::Min(VarTimer { expiry, curr }));
         self.queue.insert(TimerKey::new(curr.wt(), slot), bfn);
@@ -485,8 +491,10 @@ impl<S: 'static> Timers<S> {
                                 .queue
                                 .remove(&TimerKey::new(vt.curr.wt(), mk.slot))
                                 .unwrap();
-                            vt.curr =
-                                rounded_75point(self.now, expiry.min(self.now.add_secs(0x7FFF)));
+                            vt.curr = rounded_75point(
+                                self.now.inc(),
+                                expiry.min(self.now.add_secs(0x7FFF)),
+                            );
                             self.queue.insert(TimerKey::new(vt.curr.wt(), mk.slot), bfn);
                         }
                     }

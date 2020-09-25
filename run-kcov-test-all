@@ -30,7 +30,10 @@ case "$1" in
         EXE="$1"
 
         mkdir kcov/out-$$
-        kcov --verify --include-pattern=stakker/src kcov/out-$$ $EXE ||
+        kcov --verify \
+             --include-pattern=stakker/src \
+             --exclude-pattern=test \
+             kcov/out-$$ $EXE ||
             die "kcov failed"
         exit 0;;
     "") ;;
@@ -71,3 +74,17 @@ mkdir kcov || die "Can't creat kcov/"
 echo "=== MERGING reports to kcov/out/ ..."
 mkdir kcov/out
 kcov --merge kcov/out kcov/out-*
+
+# Check that no files have been excluded.  Skip src/lib.rs, because
+# there is no executable code in it.
+find src -name "*.rs" |
+    fgrep -v test |
+    fgrep -v src/lib.rs |
+    perl -pe 's|.*/||' |
+    sort >kcov/list-source
+ls kcov/out/kcov-merged/*.rs.*.html |
+    perl -pe 's/\.rs.*/.rs/; s|.*/||;' |
+    sort >kcov/list-covered
+cmp kcov/list-source kcov/list-covered >/dev/null 2>&1 || {
+    echo "WARNING: Some files not included in report:" $(comm -23 kcov/list-source kcov/list-covered)
+}

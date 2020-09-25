@@ -1,5 +1,15 @@
 # A lightweight low-level single-threaded actor runtime
 
+[![license:MIT/Apache-2.0][1]](https://github.com/uazu/stakker)
+[![github:uazu/stakker][2]](https://github.com/uazu/stakker)
+[![crates.io:stakker][3]](https://crates.io/crates/stakker)
+[![docs.rs:stakker][4]](https://docs.rs/stakker)
+
+[1]: https://img.shields.io/badge/license-MIT%2FApache--2.0-blue
+[2]: https://img.shields.io/badge/github-uazu%2Fstakker-brightgreen
+[3]: https://img.shields.io/badge/crates.io-stakker-red
+[4]: https://img.shields.io/badge/docs.rs-stakker-purple
+
 **Stakker** is designed to be layered on top of whatever event loop
 the user prefers to use.  It aims to take maximum advantage of Rust's
 compile-time checks and optimisations.

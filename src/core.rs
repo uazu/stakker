@@ -3,7 +3,7 @@ use crate::cell::cell::{ActorCellMaker, ActorCellOwner, ShareCellOwner};
 use crate::queue::FnOnceQueue;
 use crate::timers::Timers;
 use crate::waker::WakeHandlers;
-use crate::{Deferrer, FixedTimerKey, MaxTimerKey, MinTimerKey, StopCause, Waker};
+use crate::{Deferrer, FixedTimerKey, MaxTimerKey, MinTimerKey, Share, StopCause, Waker};
 use std::collections::VecDeque;
 use std::mem;
 use std::ops::{Deref, DerefMut};
@@ -36,6 +36,7 @@ impl Stakker {
     ///
     /// [`Stakker`]: struct.Stakker.html
     pub fn new(now: Instant) -> Self {
+        FnOnceQueue::<Stakker>::sanity_check();
         // Do this first to get the uniqueness checks to fail early,
         let (actor_owner, actor_maker) = new_actor_cell_owner();
         Self {
@@ -238,6 +239,12 @@ impl Stakker {
                 cb(self, true);
             }
         }
+    }
+
+    // For testing
+    #[cfg(all(test, feature = "inter-thread"))]
+    pub(crate) fn poll_waker_handler_count(&self) -> usize {
+        self.wake_handlers.handler_count()
     }
 }
 
@@ -624,6 +631,33 @@ impl Core {
             panic!("Core::waker() called with no waker set up");
         }
         self.wake_handlers.add(cb)
+    }
+
+    /// Borrow two [`Share`] instances mutably at the same time.  This
+    /// will panic if they are the same instance.
+    ///
+    /// [`Share`]: struct.Share.html
+    #[inline]
+    pub fn share_rw2<'a, T, U>(
+        &'a mut self,
+        s1: &'a Share<T>,
+        s2: &'a Share<U>,
+    ) -> (&'a mut T, &'a mut U) {
+        self.sharecell_owner.rw2(&s1.rc, &s2.rc)
+    }
+
+    /// Borrow three [`Share`] instances mutably at the same time.
+    /// This will panic if any two are the same instance.
+    ///
+    /// [`Share`]: struct.Share.html
+    #[inline]
+    pub fn share_rw3<'a, T, U, V>(
+        &'a mut self,
+        s1: &'a Share<T>,
+        s2: &'a Share<U>,
+        s3: &'a Share<V>,
+    ) -> (&'a mut T, &'a mut U, &'a mut V) {
+        self.sharecell_owner.rw3(&s1.rc, &s2.rc, &s3.rc)
     }
 
     /// Used in macros to get a [`Core`] reference

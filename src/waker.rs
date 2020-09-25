@@ -1,6 +1,53 @@
+//! # Inter-thread waking
+//!
+//! This converts the single `PollWaker` that we get from the I/O
+//! poller into many thousands, arranged in a heirarchical bitmap to
+//! minimise lookups.  A bitmap is used so that some code wishing to
+//! wake up its handler in the **Stakker** thread doesn't need to
+//! remember whether it already has a wake-up request outstanding.
+//! The bitmap allows the operation to be ignored quickly if it is
+//! already outstanding.
+//!
+//! ## Scaling
+//!
+//! Each bitmap has two layers, giving 4096 bits (64*64) on 64-bit
+//! platforms.  Above this is an additional summary bitmap of 64 bits.
+//! Each bit in the summary maps to a `Vec` of bitmaps.  For the first
+//! 262144 wakers (64*4096), there are just 0 or 1 bitmaps in each
+//! `Vec`.  If the caller goes beyond that number then 2 or more
+//! bitmaps may appear in each `Vec`.  So this scales quite gradually.
+//! Realistically since each waker will be associated with a channel
+//! or mutex connecting to some code in another thread, it seems
+//! unlikely we'd even reach 4096, but who knows.
+//!
+//! So costs of a single "wake" are minimum 1 atomic operation, and
+//! maximum 3 atomic operations and the poll-wake.  Costs of
+//! collecting that "wake" are 3 atomic operations up to 262144
+//! wakers, then 1 additional atomic operation for each 262144 beyond
+//! that, although most of the atomic operations will be shared with
+//! collecting any other wakes that also happened recently.
+//!
+//! Also, the more heavily loaded the main thread becomes, the less
+//! often it will collect the wakes, accumulating more each time,
+//! which means that as the load goes up, the waking mechanism becomes
+//! more efficient.
+//!
+//! (On 32-bit, the figures are 1024 per bitmap, and 32768 to fill the
+//! first element of each `Vec`.)
+//!
+//! ## Drop handling
+//!
+//! The drop of a `Waker` is handled by pushing a notification onto a
+//! mutex-protected list.  There is one waker slot in each bitmap
+//! reserved for waking up the drop handler in the main thread.  This
+//! overhead is assumed to be acceptable because drops should be very
+//! much less frequent than wakes.  For example a channel/waker pair
+//! would be created, handle many messages and then finally be
+//! dropped.
+
 // If inter-thread is disabled, we just switch in a dummy
 // implementation.  This results in a lot of dead code for the
-// compiler to optimise out.
+// compiler to optimise out, so ignore those warnings.
 #![cfg_attr(not(feature = "inter-thread"), allow(dead_code))]
 #![cfg_attr(not(feature = "inter-thread"), allow(unused_variables))]
 
@@ -12,19 +59,11 @@ use std::ops::{Index, IndexMut};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
-// Inter-thread waking.  This converts the single PollWaker that we
-// get from the I/O poller into many thousands, arranged in a
-// heirarchical bitmap to minimise lookups.  A bitmap is used so that
-// something wishing to wake up their handler doesn't need to remember
-// whether they already have a wake-up request outstanding.  The
-// bitmap allows the operation to be ignored quickly if it is already
-// outstanding.
-
 type BoxFnMutCB = Box<dyn FnMut(&mut Stakker, bool) + 'static>;
 
 #[cfg(feature = "inter-thread")]
 pub(crate) struct WakeHandlers {
-    waker: Arc<PollWaker>,
+    pollwaker: Arc<PollWaker>,
     slab: Slab<Option<BoxFnMutCB>>,
     bitmaps: Array<Vec<Arc<BitMap>>>,
 }
@@ -33,7 +72,7 @@ pub(crate) struct WakeHandlers {
 impl WakeHandlers {
     pub fn new(waker: Box<dyn Fn() + Send + Sync>) -> Self {
         Self {
-            waker: Arc::new(PollWaker::new(waker)),
+            pollwaker: Arc::new(PollWaker::new(waker)),
             slab: Slab::new(),
             bitmaps: Default::default(),
         }
@@ -42,7 +81,7 @@ impl WakeHandlers {
     /// Get a list of all the wake handlers that need to run
     pub fn wake_list(&mut self) -> Vec<u32> {
         let mut rv = Vec::new();
-        self.waker.summary.drain(|slot| {
+        self.pollwaker.summary.drain(|slot| {
             // If there is nothing in the slab for `bit`, ignore it.
             // Maybe a `wake` and a `del` occurred around the same
             // time.  This also means that maybe we `del` and
@@ -57,7 +96,7 @@ impl WakeHandlers {
 
     // Get Waker `drop_list`
     pub fn drop_list(&mut self) -> Vec<u32> {
-        mem::replace(&mut *self.waker.drop_list.lock().unwrap(), Vec::new())
+        mem::replace(&mut *self.pollwaker.drop_list.lock().unwrap(), Vec::new())
     }
 
     /// Borrows a wake handler from its slot in the slab, leaving a
@@ -77,12 +116,14 @@ impl WakeHandlers {
         }
     }
 
-    // Restores a wake handler back into its slot in the slab.  If the
-    // handler slot has been deleted, or is currently occupied (not
-    // None), then panics as it means that something has gone badly
-    // wrong.  It should not be possible for a wake handler to delete
-    // itself.  A wake handler is only deleted when the [`Waker`] is
-    // dropped.  A `drop_list` wake handler won't delete itself.
+    /// Restores a wake handler back into its slot in the slab.  If the
+    /// handler slot has been deleted, or is currently occupied (not
+    /// None), then panics as it means that something has gone badly
+    /// wrong.  It should not be possible for a wake handler to delete
+    /// itself.  A wake handler is only deleted when the [`Waker`] is
+    /// dropped.  A `drop_list` wake handler won't delete itself.
+    ///
+    /// [`Waker`]: struct.Waker.html
     pub fn handler_restore(&mut self, bit: u32, cb: BoxFnMutCB) {
         if mem::replace(
             self.slab
@@ -98,10 +139,10 @@ impl WakeHandlers {
         }
     }
 
-    // Add a wake handler and return a Waker to pass to the
-    // thread to use to trigger it.  A wake handler must be able to
-    // handle spurious wakes, since there is a small chance of those
-    // happening from time to time.
+    /// Add a wake handler and return a Waker to pass to the
+    /// thread to use to trigger it.  A wake handler must be able to
+    /// handle spurious wakes, since there is a small chance of those
+    /// happening from time to time.
     pub fn add(&mut self, cb: impl FnMut(&mut Stakker, bool) + 'static) -> Waker {
         let mut bit = u32::try_from(self.slab.insert(Some(Box::new(cb))))
             .expect("Exceeded 2^32 Waker instances");
@@ -122,7 +163,11 @@ impl WakeHandlers {
         let waker_slot = (bit >> BitMap::SIZE_BITS) & (USIZE_BITS - 1);
         let vec = &mut self.bitmaps[waker_slot];
         while vec.len() <= vec_index as usize {
-            vec.push(Arc::new(BitMap::new(base, waker_slot, self.waker.clone())));
+            vec.push(Arc::new(BitMap::new(
+                base,
+                waker_slot,
+                self.pollwaker.clone(),
+            )));
         }
         Waker {
             bit,
@@ -130,13 +175,19 @@ impl WakeHandlers {
         }
     }
 
-    // Delete a handler, and return it if it was found.  The returned
-    // handler should be called with a deleted argument of 'true'.
+    /// Delete a handler, and return it if it was found.  The returned
+    /// handler should be called with a deleted argument of 'true'.
     pub fn del(&mut self, bit: u32) -> Option<BoxFnMutCB> {
         if 0 != (bit & (BitMap::SIZE - 1)) && self.slab.contains(bit as usize) {
             return self.slab.remove(bit as usize);
         }
         None
+    }
+
+    /// Check the number of stored handlers (for testing)
+    #[cfg(test)]
+    pub(crate) fn handler_count(&self) -> usize {
+        self.slab.len()
     }
 }
 
@@ -236,7 +287,7 @@ impl Waker {
 impl Drop for Waker {
     fn drop(&mut self) {
         // Ignore poisoning here, to not panic in panic handler
-        if let Ok(mut guard) = self.bitmap.waker.drop_list.lock() {
+        if let Ok(mut guard) = self.bitmap.pollwaker.drop_list.lock() {
             guard.push(self.bit);
             self.bitmap.set(self.bitmap.base_index);
         }
@@ -320,20 +371,20 @@ struct BitMap {
     tree: Layer<Leaf>,
     base_index: u32,
     wake_index: u32,
-    waker: Arc<PollWaker>,
+    pollwaker: Arc<PollWaker>,
 }
 
 impl BitMap {
     const SIZE_BITS: u32 = USIZE_INDEX_BITS * 2;
     const SIZE: u32 = 1 << Self::SIZE_BITS;
 
-    pub fn new(base_index: u32, wake_index: u32, waker: Arc<PollWaker>) -> Self {
+    pub fn new(base_index: u32, wake_index: u32, pollwaker: Arc<PollWaker>) -> Self {
         assert_eq!(1 << USIZE_INDEX_BITS, USIZE_BITS);
         Self {
             tree: Default::default(),
             base_index,
             wake_index,
-            waker,
+            pollwaker,
         }
     }
 
@@ -344,9 +395,9 @@ impl BitMap {
         let b = bit & (USIZE_BITS - 1);
         if self.tree.child[a].set(b)
             && self.tree.summary.set(a)
-            && self.waker.summary.set(self.wake_index)
+            && self.pollwaker.summary.set(self.wake_index)
         {
-            (self.waker.waker)();
+            (self.pollwaker.waker)();
         }
     }
 

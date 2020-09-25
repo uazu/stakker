@@ -1,0 +1,32 @@
+
+[package]
+name = "fuzz_queue-fuzz"
+version = "0.0.0"
+authors = ["Automatically generated"]
+publish = false
+edition = "2018"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.3"
+
+[dependencies.fuzzing]
+path = ".."
+
+# Prevent this from interfering with workspaces
+[workspace]
+members = ["."]
+
+[[bin]]
+name = "queue"
+path = "fuzz_targets/queue.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "timers"
+path = "fuzz_targets/timers.rs"
+test = false
+doc = false

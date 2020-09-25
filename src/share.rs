@@ -7,40 +7,60 @@ use std::rc::Rc;
 /// Ref-counted shared mutable data
 ///
 /// This allows synchronous modification of shared state from actor
-/// methods.  If you only wish to share immutable data, use
-/// `std::rc::Rc` instead which avoids having to add `.ro(cx)` to
-/// access the data.
+/// methods.  Note that if you only wish to share immutable data
+/// between actors, it's less verbose to simply use `Rc` from the
+/// standard library.  Also you might wish to handle very small
+/// amounts of shared mutable data with `Rc<Cell>` instead.
 ///
-/// Note that this breaks the actor model.  Using it to share mutable
-/// data between actors effectively causes those actors to be bound
-/// together in a group.  It would be impossible to split one of those
-/// actors off to another process or over a remote link, or to test
-/// them independently.  However the actor model still applies to the
-/// group's external interface.  So this must be used with some
-/// knowledge of the trade-offs.
+/// [`Share`] is provided as a compile-time-checked zero-cost
+/// alternative to `Rc<RefCell>`.  If [`Share`] didn't exist, the
+/// temptation to use `Rc<RefCell>` occasionally would likely be too
+/// great.  However `Rc<RefCell>` brings the risk of unexpected
+/// runtime panics.  Modification of one piece of code might
+/// unexpectedly cause another distant piece of code to crash, but
+/// quite possibly only under certain conditions which makes that
+/// failure hard to anticipate in testing.  In short `Rc<RefCell>`
+/// should be avoided wherever possible.  With [`Share`] everything is
+/// checked at compile time.
 ///
-/// Be careful using this because it can easily lead to dependency on
-/// the order of execution of actors.  So treat this as similar in
-/// danger level to shared memory between threads or IPC shared memory
-/// between processes.  You don't need locking however because if you
-/// get a mutable reference to the contents you'll have exclusive
-/// access until you give it up thanks to Rust's borrow checker.
+/// Note that using [`Share`], `Rc<RefCell>` or `Rc<Cell>` breaks the
+/// actor model.  Using them to share mutable data between actors
+/// effectively causes those actors to be bound together in a group.
+/// It would be impossible to split one of those actors off to another
+/// process or over a remote link.  However the actor model still
+/// applies to the group's external interface.
 ///
-/// `self` methods on a [`Share`] item can't be passed a [`Core`]
-/// reference due to borrowing restrictions.  If you need a [`Core`]
-/// reference, then use "`this: &Share<Self>, core: &mut Core`" as
-/// arguments instead of "`&mut self`", and do `self` access via
-/// `this.rw(core)`.
+/// So this must be used with some knowledge of the trade-offs.  It
+/// could easily lead to dependency on the order of execution of
+/// actors.  Treat this as similar in danger level to shared memory
+/// between threads or IPC shared memory between processes.  You don't
+/// need locking however because if you get a mutable reference to the
+/// contents you'll have exclusive access until you give it up thanks
+/// to Rust's borrow checker.
 ///
-/// By default borrow-checking of access to the contents is handled at
-/// compile-time using a `TCell` or `TLCell` with its owner in
-/// [`Core`].  There are no access overheads at runtime by default.
-/// Cloning has the normal `Rc` overheads.
+/// To borrow more than one [`Share`] instance at a time, see
+/// [`Core::share_rw2`] and [`Core::share_rw3`].
 ///
+/// It's not possible to pass a [`Core`] reference to methods on a
+/// [`Share`] item due to borrowing restrictions.  If you need a
+/// [`Core`] reference, then use arguments of "`this: &Share<Self>,
+/// core: &mut Core`" instead of "`&mut self`", and do `self` access
+/// via `this.rw(core)`.  (However also ask yourself whether maybe
+/// this should be made into an actor instead.)
+///
+/// By default borrow-checking of access to the contents of the
+/// [`Share`] is handled at compile-time using a `TCell` or `TLCell`
+/// with its owner in [`Core`], so it is zero-cost and compiles down
+/// to a direct pointer access to the contents of a `struct`, just as
+/// if the [`Share`] wasn't there.  However cloning a [`Share`] has
+/// the normal `Rc` overheads.
+///
+/// [`Core::share_rw2`]: struct.Core.html#method.share_rw2
+/// [`Core::share_rw3`]: struct.Core.html#method.share_rw3
 /// [`Core`]: struct.Core.html
 /// [`Share`]: struct.Share.html
 pub struct Share<T> {
-    rc: Rc<ShareCell<T>>,
+    pub(crate) rc: Rc<ShareCell<T>>,
 }
 
 impl<T> Share<T> {
@@ -65,6 +85,11 @@ impl<T> Share<T> {
     /// contents of the [`Share`] instance.  By default this is a
     /// static check, which compiles down to a direct access.
     ///
+    /// To access more than one [`Share`] instance at the same time,
+    /// see [`Core::share_rw2`] and [`Core::share_rw3`].
+    ///
+    /// [`Core::share_rw2`]: struct.Core.html#method.share_rw2
+    /// [`Core::share_rw3`]: struct.Core.html#method.share_rw3
     /// [`Share`]: struct.Share.html
     #[inline]
     pub fn rw<'a>(&'a self, core: &'a mut Core) -> &'a mut T {

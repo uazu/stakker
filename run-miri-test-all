@@ -1,0 +1,10 @@
+#!/bin/bash
+
+# To install MIRI, see: https://github.com/rust-lang/miri
+
+run() {
+    export MIRIFLAGS=-Zmiri-disable-isolation
+    ./run-all-feature-comb.pl cargo +nightly miri test --no-default-features --features || exit 1
+}
+
+run

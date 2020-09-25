@@ -261,7 +261,7 @@ macro_rules! actor_of_trait {
 macro_rules! generic_call {
     // Closures
     ($handler:ident $hargs:tt $access:ident;
-     [$cx:expr], |$this:ident, $cxid:ident| $body:expr) => {{
+     [$cx:expr], |$this:pat, $cxid:pat| $body:expr) => {{
          $crate::COVERAGE!(generic_call_0);
          let cb = move |$this: &mut Self, $cxid: &mut $crate::Cx<'_, Self>| $body;
          let cx: &mut $crate::Cx<'_, Self> = $cx;  // Expecting Cx<Self> ref
@@ -270,19 +270,11 @@ macro_rules! generic_call {
          $crate::$handler!($hargs core; move |s| this.apply(s, cb));
      }};
     ($handler:ident $hargs:tt $access:ident;
-     [$core:expr], |$stakker:ident| $body:expr) => {{
+     [$core:expr], |$stakker:pat| $body:expr) => {{
          $crate::COVERAGE!(generic_call_1);
          let core = $core.access_core();  // Expecting Core, Cx or Stakker ref
          let cb = move |$stakker : &mut $crate::Stakker| $body;
          $crate::$handler!($hargs core; cb);
-     }};
-    ($handler:ident $hargs:tt $access:ident;
-     [$cx:expr], |_ $($x:tt)*) => {{
-         std::compile_error!("Do not use '_' as a closure argument in this macro; use a '_' prefix instead");
-     }};
-    ($handler:ident $hargs:tt $access:ident;
-     [$cx:expr], |$t:ident, _ $($x:tt)*) => {{
-         std::compile_error!("Do not use '_' as a closure argument in this macro; use a '_' prefix instead");
      }};
     ($handler:ident $hargs:tt $access:ident;
      [$cx:expr], move | $($x:tt)*) => {{
@@ -337,7 +329,8 @@ macro_rules! generic_call_prep {
 /// Queue an actor call or inline code for execution soon
 ///
 /// The call is deferred to the main defer queue, which will execute
-/// as soon as possible.
+/// as soon as possible.  The order of execution of calls on an actor
+/// is guaranteed to be the same order that the calls were made.
 ///
 /// Note that in the examples below, in general there can be any
 /// number of arguments, including zero.  The number of arguments
@@ -736,7 +729,7 @@ macro_rules! generic_fwd {
         $crate::indices!([$(($x))*] [$(($t))*] generic_fwd_prep $handler actor _args ($($t,)*) <$type> $method)
     }};
     // Calling closures
-    ($handler:ident; [$cx:expr], |$this:ident, $cxid:ident, $arg:ident : $t:ty| $($body:tt)+) => {{
+    ($handler:ident; [$cx:expr], |$this:pat, $cxid:pat, $arg:ident : $t:ty| $($body:tt)+) => {{
         $crate::COVERAGE!(generic_fwd_3);
         let cx: &mut $crate::Cx<'_, _> = $cx;  // Expecting Cx ref
         let actor = cx.this().clone();
@@ -744,19 +737,13 @@ macro_rules! generic_fwd {
                            move |$this, $cxid, $arg: $t| $($body)*;
                            std::compile_error!("`ret_to!` with a closure requires a single Option argument"))
     }};
-    ($handler:ident; [$cx:expr], |$this:ident, $cxid:ident $(, $arg:ident : $t:ty)*| $($body:tt)+) => {{
+    ($handler:ident; [$cx:expr], |$this:pat, $cxid:pat $(, $arg:ident : $t:ty)*| $($body:tt)+) => {{
         $crate::COVERAGE!(generic_fwd_4);
         let cx: &mut $crate::Cx<'_, _> = $cx;  // Expecting Cx ref
         let actor = cx.this().clone();
         $crate::$handler!(ready actor;
                            move |$this, $cxid, ($($arg),*): ($($t),*)| $($body)*;
                            std::compile_error!("`ret_to!` with a closure requires a single Option argument"))
-    }};
-    ($handler:ident; [$cx:expr], |_ $($x:tt)+) => {{
-        std::compile_error!("Do not use '_' as a closure argument in this macro; use a '_' prefix instead");
-    }};
-    ($handler:ident; [$cx:expr], |$t:ident, _ $($x:tt)+) => {{
-        std::compile_error!("Do not use '_' as a closure argument in this macro; use a '_' prefix instead");
     }};
     ($handler:ident; [$cx:expr], move | $($x:tt)*) => {{
         std::compile_error!("Do not add `move` to closures as they get an implicit `move` anyway");
@@ -946,7 +933,7 @@ macro_rules! fwd_nop {
 /// [`fwd_to!`]: macro.fwd_to.html
 #[macro_export]
 macro_rules! ret_to {
-    ([$cx:expr], |$this:ident, $cxid:ident, $arg:ident : Option<$t:ty>| $($body:tt)+) => {{
+    ([$cx:expr], |$this:pat, $cxid:pat, $arg:ident : Option<$t:ty>| $($body:tt)+) => {{
         $crate::COVERAGE!(ret_to_0);
         let cx: &mut $crate::Cx<'_, _> = $cx;  // Expecting Cx ref
         let actor = cx.this().clone();

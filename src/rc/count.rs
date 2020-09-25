@@ -18,6 +18,7 @@ impl CountAndState {
         Self(State::Prep as usize)
     }
 
+    #[inline]
     pub fn inc(self) -> Self {
         if self.0 >= COUNT_MASK {
             self
@@ -26,6 +27,7 @@ impl CountAndState {
         }
     }
 
+    #[inline]
     pub fn dec(self) -> (Self, bool) {
         if self.0 < COUNT_INC || self.0 >= COUNT_MASK {
             (self, false)
@@ -35,14 +37,17 @@ impl CountAndState {
         }
     }
 
+    #[inline]
     pub fn set_state(self, state: State) -> Self {
         Self((self.0 & COUNT_MASK) | (state as usize))
     }
 
+    #[inline]
     pub fn is_prep(self) -> bool {
         (self.0 & !COUNT_MASK) == (State::Prep as usize)
     }
 
+    #[inline]
     pub fn is_zombie(self) -> bool {
         (self.0 & !COUNT_MASK) == (State::Zombie as usize)
     }

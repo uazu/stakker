@@ -2,10 +2,96 @@ use std::alloc::Layout;
 use std::marker::PhantomData;
 use std::mem;
 
+// NOTE: After making changes here, check the assembly output for the
+// critical operations of adding an item and running the queue using
+// `cargo asm`, to be sure that the change hasn't added more branches
+// or made things slower.
+
+// NOTE: This code uses a lot of unsafe.  It has no UB according to
+// MIRI, but still if you'd prefer not to use this code, enable cargo
+// feature `no-unsafe-queue`.
+//
+// Strictly-speaking (according to "Behaviour considered undefined" in
+// the Rust reference) it's UB to get hold of the Layout from a vtable
+// by creating a fake reference from a FatPointer that uses the
+// correct vtable but a fake pointer value (i.e. a dangling pointer),
+// even though the dangling pointer is not dereferenced and its value
+// is completely optimised out:
+//
+//     let fake_repr = FatPointer { data: 0x8000 as _, vtable };
+//     let fake_ref = mem::transmute_copy::<FatPointer, &dyn CallTrait<S>>(&fake_repr);
+//     let layout = Layout::for_value(fake_ref);
+//
+// So the only way to pass MIRI tests and to avoid that UB at the
+// moment is to hard-code knowledge of the location of the `size` and
+// `align` fields inside the vtable.  If RustC changes this layout,
+// then new layouts can be added here conditional on the Rust version,
+// or even better Rust might implement something like Simon Sapin's
+// proposal: https://github.com/rust-lang/rfcs/pull/2580
+//
+// Unlike UB, this hard-coded knowledge can be checked at run-time and
+// fail early if RustC changes.  In future it might be possible to
+// check it at compile-time if `const fn` support is expanded.
+
 #[repr(C)]
 struct FatPointer {
     data: *mut (),
-    meta: *mut (),
+    vtable: *const VTable,
+}
+
+#[repr(C)]
+struct VTable {
+    pad: *const (),
+    size: usize,
+    align: usize,
+}
+
+// Runtime check that layout of FatPointer and VTable match what the
+// compiler is using.  TODO: Make this a const fn and do check at
+// compile-time when rustc supports that.
+#[inline]
+fn check_vtable_access() {
+    #[inline]
+    fn check(mut item: impl CallTrait<u64>) {
+        let ctref: &mut dyn CallTrait<u64> = &mut item;
+        if mem::size_of_val(&ctref) != mem::size_of::<FatPointer>() {
+            std::mem::forget(item);
+            panic!(
+                "Size of Rust trait object reference has changed.  \
+                 Report issue on Stakker github and enable feature \
+                 'no-unsafe-queue' to work around this for the moment"
+            );
+        }
+        let size = std::mem::size_of_val(ctref);
+        let align = std::mem::align_of_val(ctref);
+        assert!(size > 8 && size > align); // If fails, then closures aren't enclosing values
+        unsafe {
+            let repr = mem::transmute_copy::<&mut dyn CallTrait<u64>, FatPointer>(&ctref);
+            let size2 = (*repr.vtable).size;
+            let align2 = (*repr.vtable).align;
+            std::mem::forget(item);
+            assert_eq!(
+                (size, align),
+                (size2, align2),
+                "Layout of Rust trait object vtable has changed.  \
+                 Report issue on Stakker github and enable feature \
+                 'no-unsafe-queue' to work around this for the moment"
+            );
+        }
+    }
+    #[inline(never)]
+    fn with_u64(v1: u64, v2: u64) {
+        check(CallItem::new(move |a| *a = *a * v1 + v2));
+    }
+    #[repr(align(32))]
+    struct Align32([u64; 10]);
+    #[inline(never)]
+    fn with_align32(v: Align32) {
+        check(CallItem::new(move |a| *a = *a * v.0[0] + v.0[9]));
+    }
+    // Test two different alignments and sizes
+    with_u64(12345, 34567);
+    with_align32(Align32([123456789; 10]));
 }
 
 /// Queue of `FnOnce(&mut Stakker)` items waiting for execution.
@@ -23,6 +109,12 @@ impl<S: 'static> FnOnceQueue<S> {
         }
     }
 
+    /// Check that internal implementation assumptions are valid
+    #[inline]
+    pub fn sanity_check() {
+        check_vtable_access();
+    }
+
     /// Push a `FnOnce` instance onto the queue.  This call will be
     /// inlined and specialised to the particular `FnOnce` being
     /// pushed.
@@ -37,7 +129,7 @@ impl<S: 'static> FnOnceQueue<S> {
         let ctref: &mut dyn CallTrait<S> = &mut item;
         assert_eq!(mem::size_of_val(&ctref), mem::size_of::<FatPointer>());
         let repr = unsafe { mem::transmute_copy::<&mut dyn CallTrait<S>, FatPointer>(&ctref) };
-        hv.push(repr.meta, item, Self::expand_storage);
+        hv.push(repr.vtable as *const (), item, Self::expand_storage);
     }
 
     const INITIAL_ALLOCATION: usize = 1024;
@@ -122,15 +214,15 @@ impl<S: 'static> FnOnceQueue<S> {
     // This call will 'forget' objects (i.e. not drop them) unless the
     // caller takes care of dropping each one.  That doesn't make the
     // interface unsafe, though
+    #[inline]
     fn drain_for_each(&mut self, mut apply: impl FnMut(*mut dyn CallTrait<S>)) {
         unsafe {
             let mut it = self.storage.drain();
-            while let Some(meta) = it.next_vp() {
-                let data = 0x8000_usize as _; // Not null but aligned
-                let fake_repr = FatPointer { data, meta };
-                let fake_ref = mem::transmute_copy::<FatPointer, &dyn CallTrait<S>>(&fake_repr);
-                let data = it.next_unchecked(Layout::for_value(fake_ref));
-                let repr = FatPointer { data, meta };
+            while let Some(vtable) = it.next_vp() {
+                let vtable = vtable as *const VTable;
+                let layout = Layout::from_size_align_unchecked((*vtable).size, (*vtable).align);
+                let data = it.next_unchecked(layout);
+                let repr = FatPointer { data, vtable };
                 apply(mem::transmute_copy::<FatPointer, *mut dyn CallTrait<S>>(
                     &repr,
                 ));
@@ -165,7 +257,7 @@ mod hvec {
     use std::mem;
     use std::ptr;
 
-    type VP = *mut (); // void pointer
+    type VP = *const (); // void pointer
 
     pub struct HVec {
         ptr: *mut u8,
@@ -275,8 +367,9 @@ mod hvec {
             // If `Drain` is leaked, 'forget' contents of memory also,
             // which is safe.  Drain instance shares lifetime with
             // `&mut self`, which stops operations on `self` whilst
-            // drain is in progress.
-            let end = unsafe { self.ptr.add(self.len) };
+            // drain is in progress.  The `end` expression below is
+            // MIRI-friendly in the case of NULL pointer.
+            let end = (self.ptr as usize + self.len) as *mut u8;
             self.len = 0;
             Drain {
                 pos: self.ptr,
@@ -335,7 +428,7 @@ mod hvec {
 // ref.
 //
 // Safety: Caller must ensure that each item is called only once,
-// either through `call` or `drop`.
+// either through `call` or through `drop`.
 trait CallTrait<S> {
     unsafe fn call(&mut self, c: &mut S);
     unsafe fn drop(&mut self);
@@ -444,6 +537,7 @@ mod tests {
 
     #[test]
     fn check_space_used() {
+        super::check_vtable_access();
         let mut confirm = Confirm(0xF);
         let mut queue = super::FnOnceQueue::<Confirm>::new();
         let i32_unit = std::mem::size_of::<i32>();
@@ -534,6 +628,7 @@ mod tests {
 
     #[test]
     fn test_drop() {
+        super::check_vtable_access();
         let confirm = Rc::new(RefCell::new(0));
         let mut queue = super::FnOnceQueue::<()>::new();
         let test = TestDrop(confirm.clone());

@@ -123,7 +123,15 @@ impl<O: Send + Sync + 'static, I: Send + Sync + 'static> PipedThread<O, I> {
 
         std::thread::spawn(move || {
             if let Err(e) = std::panic::catch_unwind(AssertUnwindSafe(|| run(&mut pipes))) {
-                let msg = format!("{:?}", e);
+                // Pass through panic message if it is a `String` or
+                // `&str`, else generate some debugging output
+                let msg = match e.downcast::<String>() {
+                    Ok(v) => *v,
+                    Err(e) => match e.downcast::<&str>() {
+                        Ok(v) => v.to_string(),
+                        Err(e) => format!("Panic with unknown type: {:?}", e.type_id()),
+                    },
+                };
                 pipes.queues.mutex.lock().unwrap().panic = Some(msg);
             }
             // The Waker is dropped here, which will notify the main
@@ -144,6 +152,13 @@ impl<O: Send + Sync + 'static, I: Send + Sync + 'static> PipedThread<O, I> {
         if empty {
             self.queues.condvar.notify_all();
         }
+    }
+}
+
+impl<O: Send + Sync + 'static, I: Send + Sync + 'static> Drop for PipedThread<O, I> {
+    fn drop(&mut self) {
+        self.queues.mutex.lock().unwrap().cancel = true;
+        self.queues.condvar.notify_all();
     }
 }
 
