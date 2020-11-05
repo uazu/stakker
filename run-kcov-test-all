@@ -29,10 +29,12 @@ case "$1" in
         [ ! -z "$2" ] && die "Found more than one test binary in $TARGET/debug"
         EXE="$1"
 
+        TESTS=$(echo $(find src -name "*.rs" | fgrep /test | fgrep -v macro_coverage) | perl -pe 's/ /,/g')
+
         mkdir kcov/out-$$
         kcov --verify \
              --include-pattern=stakker/src \
-             --exclude-pattern=test \
+             --exclude-pattern=$TESTS \
              kcov/out-$$ $EXE ||
             die "kcov failed"
         exit 0;;
@@ -77,11 +79,12 @@ kcov --merge kcov/out kcov/out-*
 
 # Check that no files have been excluded.  Skip src/lib.rs, because
 # there is no executable code in it.
-find src -name "*.rs" |
-    fgrep -v test |
-    fgrep -v src/lib.rs |
-    perl -pe 's|.*/||' |
-    sort >kcov/list-source
+( find src -name "*.rs" |
+      fgrep -v test |
+      fgrep -v src/lib.rs |
+      perl -pe 's|.*/||';
+  echo macro_coverage.rs;  # Always include this
+) | sort >kcov/list-source
 ls kcov/out/kcov-merged/*.rs.*.html |
     perl -pe 's/\.rs.*/.rs/; s|.*/||;' |
     sort >kcov/list-covered

@@ -5,6 +5,42 @@ before 0.1.0 is allowed to make breaking changes.
 
 <!-- see keepachangelog.com for format ideas -->
 
+## 0.2.0-beta.1 (2020-11-05)
+
+### Breaking changes
+
+- `PipedThread::new` argument order changed, to avoid need for
+  temporaries when called
+- `Cx::fail_str` now only handles `&'static str`.  `Cx::fail_string`
+  can be used for `String`.  `fail!` macro now abstracts this.
+- `Actor::kill` and `Actor::kill_str` moved to `ActorOwn`.  This
+  constrains the power to kill an actor to just owners.  Also
+  `kill_str` now only handles `&'static str`, with `kill_string` added
+  for `String`.  If you need to kill an actor using just an `Actor`
+  reference, the actor needs a method added that calls `fail!`
+- `ActorOwn::new` now requires a parent-ID argument.  `actor!` and
+  `actor_new!` macros are unchanged.
+- `StopCause` adds `StopCause::Lost` to allow for future
+  implementation of remote actors
+
+### Added
+
+- "logger" feature for optional logging support.  If enabled, every
+  actor gets an span-ID.  Actor start and stop are logged, with
+  failure reasons.  All logging from an actor uses the span-ID and
+  supports formatted text and key-value pairs.  Logging is
+  synchronization-free and is directed to a per-Stakker logging
+  handler, which can output directly, or forward to a logging crate,
+  or forward to the logging system of the host event loop as required
+- `fail!`, `stop!` and `kill!` to express actor termination more
+  conveniently, including with formatted strings
+- `ret_fail!` and `ret_failthru!` to cascade actor failure
+
+### Changed
+
+- `Stakker::anymap_set` moved to `Core::anymap_set` so that actors can
+  set anymap values more conveniently.
+
 ## 0.1.4 (2020-09-27)
 
 ### Added

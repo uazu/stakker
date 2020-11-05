@@ -81,11 +81,15 @@ impl<O: Send + Sync + 'static, I: Send + Sync + 'static> PipedThread<O, I> {
     /// argument passed to it allows the new thread to send and
     /// receive messages.
     ///
+    /// Note: `core` argument is third argument so that `fwd_to!` and
+    /// similar macros can be used directly in the call arguments,
+    /// without borrow errors.
+    ///
     /// [`PipedLink`]: struct.PipedLink.html
     pub fn spawn(
-        core: &mut Core,
         fwd_recv: Fwd<I>,
         fwd_term: Fwd<Option<String>>,
+        core: &mut Core,
         run: impl FnOnce(&mut PipedLink<O, I>) + Send + 'static,
     ) -> Self {
         let queues = Arc::new(Queues {
@@ -142,7 +146,7 @@ impl<O: Send + Sync + 'static, I: Send + Sync + 'static> PipedThread<O, I> {
     }
 
     /// Send a message to the thread.  If the thread is blocked on
-    /// receive, wake it.  
+    /// receive, wake it.
     pub fn send(&mut self, msg: O) {
         let mut lock = self.queues.mutex.lock().unwrap();
         let empty = lock.send.is_empty();

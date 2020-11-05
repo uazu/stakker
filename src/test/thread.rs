@@ -41,9 +41,9 @@ fn pipedthread_processing() {
     impl Test {
         fn init(cx: CX![]) -> Option<Self> {
             let mut thread = PipedThread::spawn(
-                cx.core,
                 fwd_to!([cx], recv() as (usize)),
                 fwd_to!([cx], term() as (Option<String>)),
+                cx,
                 move |link| {
                     while let Some(v) = link.recv() {
                         link.send(v * 5);
@@ -106,9 +106,9 @@ fn pipedthread_terminate() {
     impl Test {
         fn init(cx: CX![]) -> Option<Self> {
             let mut thread = PipedThread::spawn(
-                cx.core,
                 fwd_to!([cx], recv() as (usize)),
                 fwd_to!([cx], term() as (Option<String>)),
+                cx,
                 move |link| {
                     while let Some(v) = link.recv() {
                         if v > 1000 {
@@ -162,9 +162,9 @@ fn pipedthread_generate() {
     impl Test {
         fn init(cx: CX![]) -> Option<Self> {
             let thread = PipedThread::spawn(
-                cx.core,
                 fwd_to!([cx], recv() as (usize)),
                 fwd_to!([cx], term() as (Option<String>)),
+                cx,
                 move |link| {
                     for v in 0..10 {
                         std::thread::sleep(Duration::from_millis(10));
@@ -216,9 +216,9 @@ fn pipedthread_sink() {
     impl Test {
         fn init(cx: CX![]) -> Option<Self> {
             let mut thread = PipedThread::spawn(
-                cx.core,
                 fwd_panic!("Not expecting thread to send data"),
                 fwd_to!([cx], term() as (Option<String>)),
+                cx,
                 move |link| {
                     let mut expect = 0;
                     while let Some(v) = link.recv() {
@@ -269,9 +269,9 @@ fn pipedthread_panic() {
     impl Test {
         fn init(cx: CX![]) -> Option<Self> {
             let thread = PipedThread::spawn(
-                cx.core,
                 fwd_panic!("Not expecting thread to send data"),
                 fwd_to!([cx], term() as (Option<String>)),
+                cx,
                 move |_| {
                     std::thread::sleep(Duration::from_millis(10));
                     panic!("TEST PANIC");

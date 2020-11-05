@@ -3,8 +3,12 @@ use crate::cell::cell::{ActorCellMaker, ActorCellOwner, ShareCellOwner};
 use crate::queue::FnOnceQueue;
 use crate::timers::Timers;
 use crate::waker::WakeHandlers;
-use crate::{Deferrer, FixedTimerKey, MaxTimerKey, MinTimerKey, Share, StopCause, Waker};
+use crate::{
+    Deferrer, FixedTimerKey, LogFilter, LogID, LogLevel, LogRecord, LogVisitor, MaxTimerKey,
+    MinTimerKey, Share, StopCause, Waker,
+};
 use std::collections::VecDeque;
+use std::fmt::Arguments;
 use std::mem;
 use std::ops::{Deref, DerefMut};
 use std::time::{Duration, Instant, SystemTime};
@@ -163,27 +167,48 @@ impl Stakker {
         self.core.systime = systime;
     }
 
-    /// Put a value into the `anymap`.  This can be accessed using the
-    /// [`Core::anymap_get`] or [`Core::anymap_try_get`] call.  An
-    /// anymap can store one value for each type (see crate
-    /// [`anymap`](https://docs.rs/anymap)).  The value must implement
-    /// `Clone`, i.e. it must act something like an `Rc` or else be
-    /// copyable data.
+    /// Set the logger and logging level
     ///
-    /// This is intended to be used for storing certain global
-    /// instances which actors may need to get hold of, for example an
-    /// access-point for the I/O poll implementation that Stakker is
-    /// running under.
+    /// The provided logger will be called synchronously every time a
+    /// [`Core::log`] call is made if the logging level is enabled.
+    /// It is provided with a `Core` reference, so can access a
+    /// `Share`, or defer calls to actors as necessary.  It may
+    /// alternatively choose to forward the logging to an external log
+    /// framework, such as the **log** or **tracing** crates.
     ///
-    /// [`Core::anymap_get`]: struct.Core.html#method.anymap_get
-    /// [`Core::anymap_try_get`]: struct.Core.html#method.anymap_try_get
-    #[cfg_attr(not(feature = "anymap"), allow(unused_variables))]
+    /// The enabled logging levels are described by `filter`.
+    /// Typically you'd set something like
+    /// `LogFilter::all(&[LogLevel::Info, LogLevel::Audit,
+    /// LogLevel::Open])` or `LogFilter::from_str("info,audit,open")`,
+    /// which enable info and above, plus audit and span open/close.
+    /// See [`LogFilter`].
+    ///
+    /// Note that the **logger** feature must be enabled for this call
+    /// to succeed.  The **stakker** crate provides only the core
+    /// logging functionality.  It adds a 64-bit logging ID to each
+    /// actor and logs actor startup and termination.  It provides the
+    /// framework for logging formatted-text and key-value pairs along
+    /// with an actor's logging-ID for context.  An external crate
+    /// like **stakker_log** may be used to provide macros that allow
+    /// convenient logging from actor code and to allow interfacing to
+    /// external logging systems.
+    ///
+    /// [`Core::log`]: struct.Core.html#method.log
+    /// [`LogFilter`]: struct.LogFilter.html
     #[inline]
-    pub fn anymap_set<T: Clone + 'static>(&mut self, val: T) {
-        // If "anymap" feature is not configured, ignore this
-        // operation, but panic on the `anymap_get`
-        #[cfg(feature = "anymap")]
-        self.core.anymap.insert(val);
+    #[allow(unused_variables)]
+    pub fn set_logger(
+        &mut self,
+        filter: LogFilter,
+        logger: impl FnMut(&mut Core, &LogRecord<'_>) + 'static,
+    ) {
+        #[cfg(feature = "logger")]
+        {
+            self.log_filter = filter;
+            self.logger = Some(Box::new(logger));
+        }
+        #[cfg(not(feature = "logger"))]
+        panic!("Enable 'logger' feature before setting a logger");
     }
 
     /// Used to provide **Stakker** with a means to wake the main
@@ -306,6 +331,12 @@ pub struct Core {
     systime: Option<SystemTime>,
     wake_handlers: WakeHandlers,
     wake_handlers_unset: bool,
+    #[cfg(feature = "logger")]
+    log_id_seq: u64,
+    #[cfg(feature = "logger")]
+    log_filter: LogFilter,
+    #[cfg(feature = "logger")]
+    logger: Option<Box<dyn FnMut(&mut Core, &LogRecord<'_>)>>,
 }
 
 impl Core {
@@ -333,6 +364,12 @@ impl Core {
             systime: None,
             wake_handlers: WakeHandlers::new(Box::new(|| unreachable!())),
             wake_handlers_unset: true,
+            #[cfg(feature = "logger")]
+            log_id_seq: 0,
+            #[cfg(feature = "logger")]
+            log_filter: LogFilter::new(),
+            #[cfg(feature = "logger")]
+            logger: None,
         }
     }
 
@@ -539,6 +576,29 @@ impl Core {
         self.timers.min_is_active(key)
     }
 
+    /// Put a value into the `anymap`.  This can be accessed using the
+    /// [`Core::anymap_get`] or [`Core::anymap_try_get`] call.  An
+    /// anymap can store one value for each type (see crate
+    /// [`anymap`](https://docs.rs/anymap)).  The value must implement
+    /// `Clone`, i.e. it must act something like an `Rc` or else be
+    /// copyable data.
+    ///
+    /// This is intended to be used for storing certain global
+    /// instances which actors may need to get hold of, for example an
+    /// access-point for the I/O poll implementation that Stakker is
+    /// running under.
+    ///
+    /// [`Core::anymap_get`]: struct.Core.html#method.anymap_get
+    /// [`Core::anymap_try_get`]: struct.Core.html#method.anymap_try_get
+    #[cfg_attr(not(feature = "anymap"), allow(unused_variables))]
+    #[inline]
+    pub fn anymap_set<T: Clone + 'static>(&mut self, val: T) {
+        // If "anymap" feature is not configured, ignore this
+        // operation, but panic on the `anymap_get`
+        #[cfg(feature = "anymap")]
+        self.anymap.insert(val);
+    }
+
     /// Gets a clone of a value from the Stakker `anymap`.  This is
     /// intended to be used to access certain global instances, for
     /// example the I/O poll implementation that this Stakker is
@@ -660,6 +720,136 @@ impl Core {
         self.sharecell_owner.rw3(&s1.rc, &s2.rc, &s3.rc)
     }
 
+    /// Log a log-record to the current logger, if one is active and
+    /// if the log-level is enabled.  Otherwise it is ignored.  `id`
+    /// should be the logging-ID (obtained from `actor.id()` or
+    /// `cx.id()` or `core.log_span_open()` for non-actor spans) or 0
+    /// if the log-record doesn't belong to any span.
+    ///
+    /// Normally you would use a macro provided by an external crate
+    /// which wraps this call.
+    #[inline]
+    #[allow(unused_variables)]
+    pub fn log(
+        &mut self,
+        id: LogID,
+        level: LogLevel,
+        target: &str,
+        fmt: Arguments<'_>,
+        kvscan: impl Fn(&mut dyn LogVisitor),
+    ) {
+        // It might seem like it would be better to build the
+        // LogRecord first and then pass its address to this call, but
+        // actually that doesn't work because `format_args!` creates
+        // some temporaries that only live to the end of the enclosing
+        // statement.  So `format_args!` can only be used within the
+        // argument list of the function that consumes those
+        // arguments.  However making this #[inline] means that the
+        // LogRecord will be built in place on the stack and then its
+        // address will be passed to the logger.
+        #[cfg(feature = "logger")]
+        if self.log_check(level) {
+            if let Some(mut logger) = mem::replace(&mut self.logger, None) {
+                logger(
+                    self,
+                    &LogRecord {
+                        id,
+                        level,
+                        target,
+                        fmt,
+                        kvscan: &kvscan,
+                    },
+                );
+                self.logger = Some(logger);
+            }
+        }
+    }
+
+    /// Check whether a log-record with the given [`LogLevel`] should
+    /// be logged
+    ///
+    /// [`LogLevel`]: enum.LogLevel.html
+    #[inline]
+    #[allow(unused_variables)]
+    pub fn log_check(&self, level: LogLevel) -> bool {
+        #[cfg(feature = "logger")]
+        {
+            self.log_filter.allows(level)
+        }
+        #[cfg(not(feature = "logger"))]
+        false
+    }
+
+    /// Allocate a new logging-ID and write an `Open` record to the
+    /// logger.  `tag` will be included as the record's text, and
+    /// should indicate what kind of span it is, e.g. the type name
+    /// for an actor.  This should be the tag for the record, and
+    /// would not normally contain any dynamic information.  If
+    /// `parent_id` is non-zero, then a `parent` key will be added
+    /// with that value.  `kvscan` will be called to add any other
+    /// key-value pairs as required, which is where the dynamic
+    /// information should go.
+    ///
+    /// This is used by actors on startup to allocate a logging-ID for
+    /// the span of the actor's lifetime.  However other code that
+    /// needs to do logging within a certain identifiable span can
+    /// also make use of this call.  Where possible, relate this new
+    /// span to another span using `parent_id`.  Use
+    /// [`Core::log_span_close`] when the span is complete.
+    ///
+    /// In the unlikely event that a program allocates 2^64 logging
+    /// IDs, the IDs will wrap around to 1 again.  If this is likely
+    /// to cause a problem downstream, the logger implementation
+    /// should detect this and warn or terminate as appropriate.
+    ///
+    /// [`Core::log_span_close`]: struct.Core.html#method.log_span_close
+    #[inline]
+    #[allow(unused_variables)]
+    pub fn log_span_open(
+        &mut self,
+        tag: &str,
+        parent_id: LogID,
+        kvscan: impl Fn(&mut dyn LogVisitor),
+    ) -> LogID {
+        #[cfg(feature = "logger")]
+        {
+            self.log_id_seq = self.log_id_seq.wrapping_add(1).max(1);
+            let id = self.log_id_seq;
+            self.log(
+                id,
+                LogLevel::Open,
+                "",
+                format_args!("{}", tag),
+                move |output| {
+                    if parent_id != 0 {
+                        output.kv_u64(Some("parent"), parent_id);
+                    }
+                    kvscan(output);
+                },
+            );
+            id
+        }
+        #[cfg(not(feature = "logger"))]
+        0
+    }
+
+    /// Write a `Close` record to the logger
+    ///
+    /// `fmt` is a message which may give more information, e.g. the
+    /// error message in the case of a failure.  `kvscan` will be
+    /// called to add key-value pairs to the record.
+    #[inline]
+    #[allow(unused_variables)]
+    pub fn log_span_close(
+        &mut self,
+        id: LogID,
+        fmt: Arguments<'_>,
+        kvscan: impl Fn(&mut dyn LogVisitor),
+    ) {
+        #[cfg(feature = "logger")]
+        self.log(id, LogLevel::Close, "", fmt, kvscan);
+    }
+
     /// Used in macros to get a [`Core`] reference
     ///
     /// [`Core`]: struct.Core.html
@@ -674,5 +864,12 @@ impl Core {
     #[inline]
     pub fn access_deferrer(&self) -> &Deferrer {
         &self.deferrer
+    }
+
+    /// Used in macros to get the LogID in case this is an actor.
+    /// Since it isn't, this call returns 0.
+    #[inline]
+    pub fn access_log_id(&self) -> LogID {
+        0
     }
 }

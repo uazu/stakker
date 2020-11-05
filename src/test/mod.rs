@@ -1,5 +1,6 @@
 mod actor;
 mod extra;
+mod log;
 mod macro_coverage;
 mod macros;
 mod memsizes;

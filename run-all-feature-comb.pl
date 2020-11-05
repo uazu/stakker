@@ -6,8 +6,8 @@
 # the number of tests required.
 my $FEATURE_SETS = <<"EOF";
 no-unsafe anymap inter-thread
-no-unsafe-queue inline-deferrer 
-multi-stakker 
+no-unsafe-queue inline-deferrer
+multi-stakker logger
 multi-thread
 EOF
 

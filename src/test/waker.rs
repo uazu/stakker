@@ -83,7 +83,7 @@ fn waker_test() {
         let id = id;
         state.borrow_mut().running.insert(id);
         IdAndWaker {
-            id: id,
+            id,
             waker: s.waker(move |_, deleted| {
                 let mut st = state.borrow_mut();
                 if deleted {

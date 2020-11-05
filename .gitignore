@@ -1,8 +1,8 @@
 /target
-**/*.rs.bk
 Cargo.lock
-**/*~
 EXPORT
 *.org
 kcov*
+**/*~
 **/tmp*
+**/_*

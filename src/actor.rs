@@ -1,6 +1,6 @@
 use crate::queue::FnOnceQueue;
 use crate::rc::ActorRc;
-use crate::{Core, Deferrer, Ret, Stakker};
+use crate::{Core, Deferrer, LogID, Ret, Stakker};
 use std::error::Error;
 use std::fmt;
 use std::ops::{Deref, DerefMut};
@@ -26,7 +26,8 @@ impl<A: 'static> ActorOwn<A> {
     /// moves into the **Ready** state.
     ///
     /// `notify` is the [`StopCause`] return, which is called when the
-    /// actor terminates.
+    /// actor terminates.  `parent_id` is the logging-ID of the parent
+    /// actor if known, or else 0.
     ///
     /// See macros [`actor!`] and [`actor_new!`] for help with
     /// creating and initialising actors.
@@ -36,15 +37,51 @@ impl<A: 'static> ActorOwn<A> {
     /// [`StopCause`]: enum.StopCause.html
     /// [`actor!`]: macro.actor.html
     /// [`actor_new!`]: macro.actor_new.html
-    pub fn new(core: &mut Core, notify: Ret<StopCause>) -> ActorOwn<A> {
+    #[inline]
+    pub fn new(core: &mut Core, notify: Ret<StopCause>, parent_id: LogID) -> ActorOwn<A> {
         Self::construct(Actor {
-            rc: ActorRc::new(core, Some(notify)),
+            rc: ActorRc::new(core, Some(notify), parent_id),
         })
     }
 
     fn construct(actor: Actor<A>) -> Self {
         actor.rc.strong_inc();
         Self { actor }
+    }
+
+    /// Kill actor, moving to **Zombie** state and dropping the
+    /// contained actor `Self` value.  The actor can never return from
+    /// the **Zombie** state.  The provided error is used to generate
+    /// an `StopCause::Killed` instance, which is passed to the
+    /// [`StopCause`] handler set up when the actor was created.
+    ///
+    /// [`StopCause`]: enum.StopCause.html
+    pub fn kill(&self, s: &mut Stakker, err: Box<dyn Error>) {
+        self.actor.terminate(s, StopCause::Killed(err));
+    }
+
+    /// Kill actor, moving to **Zombie** state and dropping the
+    /// contained actor `Self` value.  The actor can never return from
+    /// the **Zombie** state.  The provided error string is used to
+    /// generate an `StopCause::Killed` instance, which is passed to
+    /// the [`StopCause`] handler set up when the actor was created.
+    ///
+    /// [`StopCause`]: enum.StopCause.html
+    pub fn kill_str(&self, s: &mut Stakker, err: &'static str) {
+        self.actor
+            .terminate(s, StopCause::Killed(Box::new(StrError(err))));
+    }
+
+    /// Kill actor, moving to **Zombie** state and dropping the
+    /// contained actor `Self` value.  The actor can never return from
+    /// the **Zombie** state.  The provided error string is used to
+    /// generate an `StopCause::Killed` instance, which is passed to
+    /// the [`StopCause`] handler set up when the actor was created.
+    ///
+    /// [`StopCause`]: enum.StopCause.html
+    pub fn kill_string(&self, s: &mut Stakker, err: impl Into<String>) {
+        self.actor
+            .terminate(s, StopCause::Killed(Box::new(StringError(err.into()))));
     }
 
     /// Convert into an anonymous owning reference.  See
@@ -170,7 +207,7 @@ impl ActorOwnAnon {
 ///     }
 /// }
 /// ```
-///     
+///
 /// # Internal state of an actor
 ///
 /// An actor may be in one of three states: **Prep**, **Ready** or
@@ -213,10 +250,11 @@ impl ActorOwnAnon {
 /// **"Zombie" state**: The **Zombie** state can be entered for
 /// various reasons.  The first is normal shutdown of the actor
 /// through the [`Cx::stop`] method.  The second is failure of the
-/// actor through the [`Cx::fail`] or [`Cx::fail_str`] methods.  The
-/// third is through being killed externally through the
-/// [`Actor::kill`] or [`Actor::kill_str`] methods.  Termination of
-/// the actor is notified to the [`StopCause`] handler provided to the
+/// actor through the [`Cx::fail`], [`Cx::fail_str`] or
+/// [`Cx::fail_string`] methods.  The third is through being killed
+/// externally through the [`ActorOwn::kill`], [`ActorOwn::kill_str`]
+/// or [`ActorOwn::kill_string`] methods.  Termination of the actor is
+/// notified to the [`StopCause`] handler provided to the
 /// [`ActorOwn::new`] method when the actor was created.  (If the last
 /// reference to the actor is dropped, the actor will be terminated
 /// without entering the **Zombie** state.)
@@ -253,15 +291,17 @@ impl ActorOwnAnon {
 ///
 /// However if necessary other termination strategies are possible,
 /// since the actor can be terminated externally using the
-/// [`Actor::kill`] call.
+/// [`ActorOwn::kill`] call.
 ///
 /// [`Actor::is_zombie`]: struct.Actor.html#method.is_zombie
-/// [`Actor::kill_str`]: struct.Actor.html#method.kill_str
-/// [`Actor::kill`]: struct.Actor.html#method.kill
+/// [`ActorOwn::kill_str`]: struct.ActorOwn.html#method.kill_str
+/// [`ActorOwn::kill_string`]: struct.ActorOwn.html#method.kill_string
+/// [`ActorOwn::kill`]: struct.ActorOwn.html#method.kill
 /// [`ActorOwn::new`]: struct.ActorOwn.html#method.new
 /// [`ActorOwn`]: struct.ActorOwn.html
 /// [`Actor`]: struct.Actor.html
 /// [`Cx::fail_str`]: struct.Cx.html#method.fail_str
+/// [`Cx::fail_string`]: struct.Cx.html#method.fail_string
 /// [`Cx::fail`]: struct.Cx.html#method.fail
 /// [`Cx::stop`]: struct.Cx.html#method.stop
 /// [`Fwd`]: struct.Fwd.html
@@ -319,35 +359,37 @@ impl<A> Actor<A> {
         self.rc.to_ready(s, val);
     }
 
-    /// Kill actor, moving to **Zombie** state and dropping the
-    /// contained actor `Self` value.  The actor can never return from
-    /// the **Zombie** state.  The provided error is used to generate
-    /// an `StopCause::Killed` instance, which is passed to the
-    /// [`StopCause`] handler set up when the actor was created.
-    ///
-    /// [`StopCause`]: enum.StopCause.html
-    pub fn kill(&self, s: &mut Stakker, err: Box<dyn Error>) {
-        self.terminate(s, StopCause::Killed(err));
-    }
-
-    /// Kill actor, moving to **Zombie** state and dropping the
-    /// contained actor `Self` value.  The actor can never return from
-    /// the **Zombie** state.  The provided error string is used to
-    /// generate an `StopCause::Killed` instance, which is passed to
-    /// the [`StopCause`] handler set up when the actor was created.
-    ///
-    /// [`StopCause`]: enum.StopCause.html
-    pub fn kill_str(&self, s: &mut Stakker, err: impl Into<String>) {
-        self.terminate(s, StopCause::Killed(Box::new(StringError(err.into()))));
-    }
-
     // Terminate actor, moving to **Zombie** state and dropping
     // contained value if any.  The actor can never return from the
     // **Zombie** state.  The `died` value is sent to the
     // [`StopCause`] handler set up when the actor was created.
     fn terminate(&self, s: &mut Stakker, died: StopCause) {
         if let Some(notify) = self.rc.to_zombie(s) {
+            self.log_termination(s, &died);
             notify.ret(died);
+        }
+    }
+
+    fn log_termination(&self, core: &mut Core, died: &StopCause) {
+        if cfg!(feature = "logger") {
+            match died {
+                StopCause::Stopped => core.log_span_close(self.id(), format_args!(""), |_| {}),
+                StopCause::Failed(ref e) => {
+                    core.log_span_close(self.id(), format_args!("{}", e), |out| {
+                        out.kv_null(Some("failed"))
+                    })
+                }
+                StopCause::Killed(ref e) => {
+                    core.log_span_close(self.id(), format_args!("{}", e), |out| {
+                        out.kv_null(Some("killed"))
+                    })
+                }
+                StopCause::Dropped => core.log_span_close(self.id(), format_args!(""), |out| {
+                    out.kv_null(Some("dropped"))
+                }),
+                StopCause::Lost => core
+                    .log_span_close(self.id(), format_args!(""), |out| out.kv_null(Some("lost"))),
+            };
         }
     }
 
@@ -409,6 +451,13 @@ impl<A> Actor<A> {
         }
     }
 
+    /// Get the logging-ID of this actor.  If the **logger** feature
+    /// isn't enabled, returns 0.
+    #[inline]
+    pub fn id(&self) -> LogID {
+        self.rc.id()
+    }
+
     /// This may be used to submit items to the [`Deferrer`] main
     /// queue from a drop handler, without needing a [`Core`]
     /// reference.
@@ -435,6 +484,13 @@ impl<A> Actor<A> {
     pub fn access_actor(&self) -> &Self {
         self
     }
+
+    /// Used in macros to get the actor's logging-ID.  If the
+    /// **logger** feature isn't enabled, returns 0.
+    #[inline]
+    pub fn access_log_id(&self) -> LogID {
+        self.rc.id()
+    }
 }
 
 impl<A> Clone for Actor<A> {
@@ -446,6 +502,15 @@ impl<A> Clone for Actor<A> {
 }
 
 /// Indicates reason for actor termination
+///
+/// In case of failure, this is not intended to provide a full
+/// backtrace of actor failures leading up to this failure.  It only
+/// provides information on the immediate failure that occurred, to
+/// allow the actor receiving this indication to make a decision on
+/// what to do next.
+///
+/// To trace back exactly what happened, enable the "logger" feature
+/// and record the `Open` and `Close` events.
 pub enum StopCause {
     /// Actor terminated using [`Cx::stop`]
     ///
@@ -457,23 +522,24 @@ pub enum StopCause {
     /// [`Cx::fail`]: struct.Cx.html#method.fail
     Failed(Box<dyn Error>),
 
-    /// Actor was killed through [`Actor::kill`]
+    /// Actor was killed through [`ActorOwn::kill`]
     ///
-    /// [`Actor::kill`]: struct.Actor.html#method.kill
+    /// [`ActorOwn::kill`]: struct.ActorOwn.html#method.kill
     Killed(Box<dyn Error>),
 
     /// Last owning reference to the actor was dropped
     Dropped,
+
+    /// Lost the connection to a remote actor's host.  (This will be
+    /// used when remote actors are implemented.)
+    Lost,
 }
 
 impl StopCause {
     /// Test whether this the actor died with an associated error,
     /// i.e. `Failed` or `Killed`.
     pub fn has_error(&self) -> bool {
-        match self {
-            StopCause::Failed(_) | StopCause::Killed(_) => true,
-            _ => false,
-        }
+        matches!(self, StopCause::Failed(_) | StopCause::Killed(_))
     }
 }
 
@@ -484,6 +550,7 @@ impl std::fmt::Display for StopCause {
             Self::Failed(e) => write!(f, "Actor failed: {}", e),
             Self::Killed(e) => write!(f, "Actor was killed: {}", e),
             Self::Dropped => write!(f, "Actor was dropped"),
+            Self::Lost => write!(f, "Lost connection to actor"),
         }
     }
 }
@@ -497,16 +564,14 @@ impl std::fmt::Debug for StopCause {
 /// Context for an actor call
 ///
 /// Gives access to [`Core`] through auto-deref or `*cx`.  Also allows
-/// stopping the actor with [`Cx::stop`] (successful termination) and
-/// aborting the actor with [`Cx::fail`] or [`Cx::fail_str`] (failure
-/// with an error).  A reference to the current actor is available
-/// through [`Cx::this`].
+/// stopping the actor with [`stop!`] (successful termination) and
+/// aborting the actor with [`fail!`] (failure with an error).  A
+/// reference to the current actor is available through [`Cx::this`].
 ///
 /// [`Core`]: struct.Core.html
-/// [`Cx::fail_str`]: struct.Cx.html#method.fail_str
-/// [`Cx::fail`]: struct.Cx.html#method.fail
-/// [`Cx::stop`]: struct.Cx.html#method.stop
 /// [`Cx::this`]: struct.Cx.html#method.this
+/// [`fail!`]: macro.fail.html
+/// [`stop!`]: macro.stop.html
 pub struct Cx<'a, A: 'static> {
     pub(crate) core: &'a mut Core,
     pub(crate) this: &'a Actor<A>,
@@ -531,6 +596,13 @@ impl<'a, A> Cx<'a, A> {
         self.this
     }
 
+    /// Get the logging-ID of the current actor.  If the **logger** feature
+    /// isn't enabled, returns 0.
+    #[inline]
+    pub fn id(&self) -> LogID {
+        self.this.id()
+    }
+
     /// Indicate successful termination of the actor.  As soon as the
     /// currently-running actor call finishes, the actor will be
     /// terminated.  Actor state will be dropped, and any further
@@ -551,7 +623,10 @@ impl<'a, A> Cx<'a, A> {
     /// is passed back to the [`StopCause`] handler provided when the
     /// actor was created.
     ///
+    /// [`fail!`] provides a convenient interface to this method.
+    ///
     /// [`StopCause`]: enum.StopCause.html
+    /// [`fail!`]: macro.fail.html
     #[inline]
     pub fn fail(&mut self, e: impl Error + 'static) {
         self.die = Some(StopCause::Failed(Box::new(e)));
@@ -564,9 +639,28 @@ impl<'a, A> Cx<'a, A> {
     /// is passed back to the [`StopCause`] handler provided when the
     /// actor was created.
     ///
+    /// [`fail!`] provides a convenient interface to this method.
+    ///
     /// [`StopCause`]: enum.StopCause.html
+    /// [`fail!`]: macro.fail.html
     #[inline]
-    pub fn fail_str(&mut self, e: impl Into<String>) {
+    pub fn fail_str(&mut self, e: &'static str) {
+        self.die = Some(StopCause::Failed(Box::new(StrError(e))));
+    }
+
+    /// Indicate failure of the actor.  As soon as the
+    /// currently-running actor call finishes, the actor will be
+    /// terminated.  Actor state will be dropped, and any further
+    /// calls to this actor will be discarded.  The termination status
+    /// is passed back to the [`StopCause`] handler provided when the
+    /// actor was created.
+    ///
+    /// [`fail!`] provides a convenient interface to this method.
+    ///
+    /// [`StopCause`]: enum.StopCause.html
+    /// [`fail!`]: macro.fail.html
+    #[inline]
+    pub fn fail_string(&mut self, e: impl Into<String>) {
         self.die = Some(StopCause::Failed(Box::new(StringError(e.into()))));
     }
 
@@ -576,6 +670,13 @@ impl<'a, A> Cx<'a, A> {
     #[inline]
     pub fn access_actor(&self) -> &Actor<A> {
         self.this
+    }
+
+    /// Used in macros to get the actor's logging-ID.  If the
+    /// **logger** feature isn't enabled, returns 0.
+    #[inline]
+    pub fn access_log_id(&self) -> LogID {
+        self.this.id()
     }
 }
 
@@ -595,7 +696,17 @@ impl<'a, A> DerefMut for Cx<'a, A> {
 
 /// A miscellaneous error with a string description
 #[derive(Debug)]
-pub struct StringError(pub String);
+pub(crate) struct StrError(&'static str);
+impl Error for StrError {}
+impl fmt::Display for StrError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+/// A miscellaneous error with a string description
+#[derive(Debug)]
+pub(crate) struct StringError(pub String);
 impl Error for StringError {}
 impl fmt::Display for StringError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

@@ -13,7 +13,7 @@ use crate::cell::cell::{ActorCell, ActorCellOwner};
 use crate::queue::FnOnceQueue;
 use crate::rc::count::CountAndState;
 use crate::rc::minrc::MinRc;
-use crate::{Core, Deferrer, Fwd, Ret, Stakker, StopCause};
+use crate::{Core, Deferrer, Fwd, LogID, Ret, Stakker, StopCause};
 use static_assertions::{assert_eq_size, const_assert};
 use std::cell::Cell;
 use std::mem;
@@ -48,6 +48,8 @@ struct ActorBox<A> {
     deferrer: Deferrer,
     // 16
     notify: Cell<Option<Ret<StopCause>>>,
+    #[cfg(feature = "logger")]
+    id: LogID,
     // CellID(0 or 8) + Enum-determinant(8) + Data(max(24, A))  # 24 is for FnOnceQueue
     inner: ActorCell<Inner<A>>,
 }
@@ -64,15 +66,27 @@ enum Inner<A> {
 pub(crate) struct ActorRc<A: 'static>(MinRc<ActorBox<A>>);
 
 impl<A> ActorRc<A> {
-    pub fn new(core: &mut Core, notify: Option<Ret<StopCause>>) -> Self {
+    pub fn new(core: &mut Core, notify: Option<Ret<StopCause>>, _parent_id: LogID) -> Self {
         Self(MinRc::new(ActorBox {
             strong: Cell::new(CountAndState::new()),
             deferrer: core.deferrer(),
             notify: Cell::new(notify),
+            #[cfg(feature = "logger")]
+            id: core.log_span_open(std::any::type_name::<A>(), _parent_id, |_| {}),
             inner: core.actor_maker.cell(Inner::Prep(Prep {
                 queue: FnOnceQueue::new(),
             })),
         }))
+    }
+
+    #[inline]
+    pub fn id(&self) -> LogID {
+        #[cfg(feature = "logger")]
+        {
+            self.0.inner().id
+        }
+        #[cfg(not(feature = "logger"))]
+        0
     }
 
     // Accessors for convenience

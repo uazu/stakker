@@ -56,3 +56,16 @@ pub fn ret_some_do_0() {}
 pub fn ret_panic_0() {}
 pub fn ret_nop_0() {}
 pub fn ret_shutdown_0() {}
+pub fn ret_fail_0() {}
+pub fn ret_fail_1() {}
+pub fn ret_fail_2() {}
+pub fn ret_failthru_0() {}
+pub fn ret_failthru_1() {}
+pub fn ret_failthru_2() {}
+pub fn fail_0() {}
+pub fn fail_1() {}
+pub fn fail_2() {}
+pub fn stop_0() {}
+pub fn kill_0() {}
+pub fn kill_1() {}
+pub fn kill_2() {}

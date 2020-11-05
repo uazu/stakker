@@ -100,12 +100,12 @@
 //! of `Rc`, which saves around one `usize` per [`Actor`] or [`Fwd`]
 //! instance.
 //!
-//! By default only one thread is allowed to run a [`Stakker`]
-//! instance, which enables an optimisation which uses a global
-//! variable for the [`Deferrer`] defer queue (used for drop
+//! With default features, only one thread is allowed to run a
+//! [`Stakker`] instance, which enables an optimisation which uses a
+//! global variable for the [`Deferrer`] defer queue (used for drop
 //! handlers).  However if more [`Stakker`] instances need to be run,
 //! then the **multi-thread** or **multi-stakker** features cause it
-//! to fall back to alternative implementations.
+//! to use alternative implementations.
 //!
 //! All deferred operations, including all async actor calls, are
 //! handled as `FnOnce` instances on a queue.  The aim is to make this
@@ -190,6 +190,11 @@
 //! - **inline-deferrer**: Forces use of the inline [`Deferrer`]
 //! implementation instead of using the global or thread-local
 //! implementation.  Possibly useful if thread-locals are very slow.
+//!
+//! - **logger**: Enables **Stakker**'s core logging feature, which
+//! logs actor startup and termination, and which allows macros from
+//! the **stakker_log** crate to log with actor context information.
+//! See [`Stakker::set_logger`].
 //!
 //! Testing features:
 //!
@@ -331,7 +336,7 @@
 //!         let ret = ret_some_to!([cx], recv_state(self.count) as (bool));
 //!         call!([self.light], query(ret));
 //!     }
-//!     
+//!
 //!     fn recv_state(&self, _: CX![], count: usize, state: bool) {
 //!         println!("  (at count {} received: {})", count, state);
 //!     }
@@ -364,7 +369,7 @@
 //!     // required to wait for external events, so just `sleep`
 //!     let maxdur = stakker.next_wait_max(Instant::now(), Duration::from_secs(60), false);
 //!     std::thread::sleep(maxdur);
-//!     
+//!
 //!     // Run queue and timers
 //!     stakker.run(Instant::now(), false);
 //! }
@@ -458,6 +463,7 @@
 //! [`PipedThread`]: struct.PipedThread.html
 //! [`Ret`]: struct.Ret.html
 //! [`Share`]: struct.Share.html
+//! [`Stakker::set_logger`]: struct.Stakker.html#method.set_logger
 //! [`Stakker`]: struct.Stakker.html
 //! [`Waker`]: struct.Waker.html
 //! [`actor!`]: macro.actor.html
@@ -474,6 +480,7 @@
 // output go via a Fwd
 
 pub use crate::core::{Core, Stakker};
+pub use crate::log::{LogFilter, LogID, LogLevel, LogLevelError, LogRecord, LogVisitor};
 pub use actor::{Actor, ActorOwn, ActorOwnAnon, Cx, StopCause};
 pub use deferrer::Deferrer;
 pub use fwd::Fwd;
@@ -505,6 +512,7 @@ static_assertions::assert_impl_all!(MinTimerKey: Copy, Clone);
 mod actor;
 mod core;
 mod fwd;
+mod log;
 mod macros;
 mod ret;
 mod share;

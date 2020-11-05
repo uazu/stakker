@@ -117,26 +117,34 @@ macro_rules! COVERAGE {
 /// instance to call if the actor is terminated.  An [`ActorOwn`]
 /// reference is returned.
 ///
+/// If the **logger** feature is enabled then an **Open** log-record
+/// is written for the new actor.  If the `core` argument is actually
+/// a [`Cx`] then the actor-ID of the actor that the [`Cx`] belongs to
+/// will be recorded as the parent actor.
+///
 /// Implemented using [`ActorOwn::new`].
 ///
 /// [`ActorOwn::new`]: struct.ActorOwn.html#method.new
 /// [`ActorOwn`]: struct.ActorOwn.html
+/// [`Cx`]: struct.Cx.html
 /// [`actor_new!`]: macro.actor_new.html
 #[macro_export]
 macro_rules! actor {
     ($core:expr, $type:ident :: $init:ident($($x:expr),* $(,)? ), $notify:expr) => {{
         $crate::COVERAGE!(actor_0);
         let notify = $notify;
+        let parid = $core.access_log_id();
         let core = $core.access_core();
-        let actor = $crate::ActorOwn::<$type>::new(core, notify);
+        let actor = $crate::ActorOwn::<$type>::new(core, notify, parid);
         $crate::call!([actor], <$type>::$init($($x),*));
         actor
     }};
     ($core:expr, <$type:ty> :: $init:ident($($x:expr),* $(,)? ), $notify:expr) => {{
         $crate::COVERAGE!(actor_1);
         let notify = $notify;
+        let parid = $core.access_log_id();
         let core = $core.access_core();
-        let actor = $crate::ActorOwn::<$type>::new(core, notify);
+        let actor = $crate::ActorOwn::<$type>::new(core, notify, parid);
         $crate::call!([actor], <$type>::$init($($x),*));
         actor
     }};
@@ -151,14 +159,20 @@ macro_rules! actor {
 ///
 /// ```ignore
 /// let actor = actor_new!(core, Type, notify);
-/// call!([actor, core], Type::init(arg1, arg2...));
+/// call!([actor], Type::init(arg1, arg2...));
 /// ```
+///
+/// If the **logger** feature is enabled then an **Open** log-record
+/// is written for the new actor.  If the `core` argument is actually
+/// a [`Cx`] then the actor-ID of the actor that the [`Cx`] belongs to
+/// will be recorded as the parent actor.
 ///
 /// An [`ActorOwn`] reference is returned.  Implemented using
 /// [`ActorOwn::new`].
 ///
 /// [`ActorOwn::new`]: struct.ActorOwn.html#method.new
 /// [`ActorOwn`]: struct.ActorOwn.html
+/// [`Cx`]: struct.Cx.html
 /// [`Fwd`]: struct.Fwd.html
 /// [`actor!`]: macro.actor.html
 #[macro_export]
@@ -166,7 +180,9 @@ macro_rules! actor_new {
     ($core:expr, $type:ty, $notify:expr) => {{
         $crate::COVERAGE!(actor_new);
         let notify = $notify;
-        $crate::ActorOwn::<$type>::new($core, notify) // Expecting Cx, Core or Stakker ref
+        let parid = $core.access_log_id();
+        let core = $core.access_core();
+        $crate::ActorOwn::<$type>::new(core, notify, parid) // Expecting Cx, Core or Stakker ref
     }};
 }
 
@@ -240,16 +256,18 @@ macro_rules! actor_of_trait {
     ($core:expr, $trait:ident, $type:ident :: $init:ident($($x:expr),* $(,)? ), $notify:expr) => {{
         $crate::COVERAGE!(actor_2);
         let notify = $notify;
+        let parid = $core.access_log_id();
         let core = $core.access_core();
-        let actor = $crate::ActorOwn::<$trait>::new(core, notify);
+        let actor = $crate::ActorOwn::<$trait>::new(core, notify, parid);
         $crate::call!([actor], <$type>::$init($($x),*));
         actor
     }};
     ($core:expr, $trait:ident, <$type:ty> :: $init:ident($($x:expr),* $(,)? ), $notify:expr) => {{
         $crate::COVERAGE!(actor_3);
         let notify = $notify;
+        let parid = $core.access_log_id();
         let core = $core.access_core();
-        let actor = $crate::ActorOwn::<$trait>::new(core, notify);
+        let actor = $crate::ActorOwn::<$trait>::new(core, notify, parid);
         $crate::call!([actor], <$type>::$init($($x),*));
         actor
     }};
@@ -336,50 +354,84 @@ macro_rules! generic_call_prep {
 /// number of arguments, including zero.  The number of arguments
 /// depends on the signature of the called method.  All of these
 /// values may be full Rust expressions, which are evaluated at the
-/// call-site before queuing the call.  The exceptions are method
-/// names, types/paths and argument names for closures which may be
-/// any valid identifier.
+/// call-site before queuing the call.
 ///
 /// Note that the part in square brackets gives the context of the
-/// call.  For calls to the same actor, this is normally just `cx`.
-/// For calls to another actor, normally the actor and a [`Core`]
-/// reference should be given (e.g. `cx`), but if the [`Core`]
-/// reference is omitted, the actor's built-in [`Deferrer`] is used
-/// instead.  There is no difference in functionality (apart from
-/// borrowing issues), just that [`Core`] is more likely to be in
-/// cache.
+/// call, which takes one of these forms:
+///
+/// - `[cx]`: This is used for calls to the same actor
+///
+/// - `[actor]`: This is used for calls to another actor.  The call is
+/// made through the actor's built-in [`Deferrer`].
+///
+/// - `[actor, cx]` or `[actor, core]`: This is also used for calls to
+/// another actor.  The call is made via [`Core`], which might be
+/// slightly faster if the [`Deferrer`] is inlined as it may avoid a
+/// cache miss.  Note that this form is always required for other
+/// macros such as [`after!`], [`idle!`], etc which must go via
+/// [`Core`].
 ///
 /// ```ignore
 /// // Call a method in this actor or in another actor
 /// call!([cx], method(arg1, arg2...));
-/// call!([actorxx, core], method(arg1, arg2...));
+/// call!([actorxx], method(arg1, arg2...));
 ///
 /// // Call a method whilst the actor is in the 'Prep' state, before it
 /// // has a `Self` instance.  `Type` here in the first line may be `Self`.
 /// call!([cx], Type::method(arg1, arg2...));
 /// call!([cx], <path::Type>::method(arg1, arg2...));
-/// call!([actoryy, core], Type::method(arg1, arg2...));
-/// call!([actorzz, core], <path::Type>::method(arg1, arg2...));
-///
-/// // Use the actor's built-in Deferrer; doesn't require Core
-/// call!([actorxx], method(arg1, arg2...));
 /// call!([actoryy], Type::method(arg1, arg2...));
 /// call!([actorzz], <path::Type>::method(arg1, arg2...));
 ///
 /// // Defer a call to inline code.  Closure is always treated as a `move` closure
 /// call!([cx], |this, cx| ...code...);   // Inline code which refers to this actor
 /// call!([core], |stakker| ...code...);  // Generic inline code (`&mut Stakker` arg)
+///
+/// // For macros other than `call!`, it's necessary to also specify a
+/// // `core` or `cx` reference when calling another actor
+/// call!([actorxx, core], method(arg1, arg2...));
+/// call!([actoryy, core], Type::method(arg1, arg2...));
+/// call!([actorzz, core], <path::Type>::method(arg1, arg2...));
 /// ```
 ///
 /// Implemented using [`Core::defer`], [`Actor::defer`],
 /// [`Actor::apply`] and [`Actor::apply_prep`].
+///
+/// ## Synchronous direct calls to the same actor
+///
+/// When calling a method on the same actor, there is another option,
+/// and that's to make the call directly on `self`.  Since the actor
+/// behaviours are normal Rust methods and the actor state is just a
+/// normal Rust structure, there is nothing to stop you doing this.
+/// The call occurs synchronously instead of being deferred until
+/// later as with [`call!`].  For example:
+///
+/// ```ignore
+/// self.method(cx, arg1, arg2...);
+/// ```
+///
+/// It is also permissible to directly call **Ready** methods from
+/// **Prep** methods, since there is no difference between the [`Cx`]
+/// passed to a **Prep** method and that passed to a **Ready** method.
+/// You won't have `self` in a **Prep** method, but you can make the
+/// call on whatever you've called the `Self` value you've
+/// constructed.  For example:
+///
+/// ```ignore
+/// let mut this = Self {...};
+/// this.method(cx, arg1, arg2...);
+/// ```
 ///
 /// [`Actor::apply_prep`]: struct.Actor.html#method.apply_prep
 /// [`Actor::apply`]: struct.Actor.html#method.apply
 /// [`Actor::defer`]: struct.Actor.html#method.defer
 /// [`Core::defer`]: struct.Core.html#method.defer
 /// [`Core`]: struct.Core.html
+/// [`Cx`]: struct.Cx.html
 /// [`Deferrer`]: struct.Deferrer.html
+/// [`after!`]: macro.after.html
+/// [`call!`]: macro.call.html
+/// [`idle!`]: macro.idle.html
 #[macro_export]
 macro_rules! call {
     ( $($x:tt)+ ) => {{
@@ -430,7 +482,7 @@ macro_rules! lazy_aux {
     }};
 }
 
-/// Perform an actor call or inline code when the process becomes idle
+/// Perform an actor call or inline code when the thread becomes idle
 ///
 /// The call syntax accepted is identical to the [`call!`] macro.
 /// However the `[actor], ...` form is not accepted because a [`Core`]
@@ -918,6 +970,9 @@ macro_rules! fwd_nop {
 /// receiving method, either `Option<type>` for a single type, or else
 /// `Option<(type1, type2...)>`.
 ///
+/// See [`ret_some_to!`] instead if you're only interested in the
+/// `Some(msg)` case.
+///
 /// ```ignore
 /// ret_to!(...arguments-as-for-fwd_to-macro...);
 /// ```
@@ -931,6 +986,7 @@ macro_rules! fwd_nop {
 /// [`Ret::to_actor`]: struct.Ret.html#method.to_actor
 /// [`Ret`]: struct.Ret.html
 /// [`fwd_to!`]: macro.fwd_to.html
+/// [`ret_some_to!`]: macro.ret_some_to.html
 #[macro_export]
 macro_rules! ret_to {
     ([$cx:expr], |$this:pat, $cxid:pat, $arg:ident : Option<$t:ty>| $($body:tt)+) => {{
@@ -1130,5 +1186,251 @@ macro_rules! ret_shutdown {
                 deferrer.defer(|s| s.shutdown($crate::StopCause::Dropped));
             }
         })
+    }};
+}
+
+/// Create a [`Ret`] instance that terminates this actor with failure
+///
+/// ```ignore
+/// ret_fail!(cx, "format...", fmt-args...);
+/// ret_fail!(cx, "literal...");
+/// ret_fail!(cx, error);
+/// ```
+///
+/// This accepts any message, and terminates the actor with the given
+/// failure message/error, as for [`fail!`].
+///
+/// This can be used as a termination notifier for a child actor in
+/// the [`actor!`] or [`actor_new!`] call.  It allows cascading actor
+/// failure upwards until it reaches an ancestor that can handle it.
+///
+/// Using this macro, even successful termination of the child actor
+/// is treated as unexpected and a cause for failure, i.e. using this
+/// assumes that the child is normally supposed to outlive the parent
+/// actor, e.g. it only dies when the parent actor drops the reference
+/// to it.  If you wish to allow the child to terminate successfully
+/// or be killed, consider using [`ret_failthru!`] instead.
+///
+/// The arguments are treated as for [`fail!`], calling on to
+/// [`Cx::fail`], [`Cx::fail_str`] or [`Cx::fail_string`].
+///
+/// Note that errors are not normally chained in **Stakker**, i.e. the
+/// failure wouldn't normally contain details of the failures which
+/// lead to that failure.  The detailed history of a failure can be
+/// analyzed by running with the **logger** feature enabled, and
+/// looking at `Open` and `Close` events.
+///
+/// [`Cx::fail_str`]: struct.Cx.html#method.fail_str
+/// [`Cx::fail_string`]: struct.Cx.html#method.fail_string
+/// [`Cx::fail`]: struct.Cx.html#method.fail
+/// [`Ret`]: struct.Ret.html
+/// [`actor!`]: macro.actor.html
+/// [`actor_new!`]: macro.actor_new.html
+/// [`fail!`]: macro.fail.html
+/// [`ret_failthru!`]: macro.ret_failthru.html
+#[macro_export]
+macro_rules! ret_fail {
+    ($cx:expr, $msg:literal) => {{
+        $crate::COVERAGE!(ret_fail_0);
+        let cx: &mut $crate::Cx<'_, _> = $cx;
+        let actor = cx.this().clone();
+        $crate::Ret::to_actor(actor, move |_, cx, _| cx.fail_str($msg))
+    }};
+    ($cx:expr, $fmt:literal $(, $arg:expr)*) => {{
+        $crate::COVERAGE!(ret_fail_1);
+        let message = format!($fmt $(, $arg)*);
+        let cx: &mut $crate::Cx<'_, _> = $cx;
+        let actor = cx.this().clone();
+        $crate::Ret::to_actor(actor, move |_, cx, _| cx.fail_string(message))
+    }};
+    ($cx:expr, $error:expr) => {{
+        $crate::COVERAGE!(ret_fail_2);
+        let error = $error;
+        let cx: &mut $crate::Cx<'_, _> = $cx;
+        let actor = cx.this().clone();
+        $crate::Ret::to_actor(actor, move |_, cx, _| cx.fail(error))
+    }};
+}
+
+/// Create a [`Ret`] instance that passes through actor failure
+///
+/// ```ignore
+/// ret_failthru!(cx, "format...", fmt-args...);
+/// ret_failthru!(cx, "literal...");
+/// ret_failthru!(cx, error);
+/// ```
+///
+/// This is designed to be used as a termination notifier for a child
+/// actor in the [`actor!`] or [`actor_new!`] call.  It receives an
+/// `Option<StopCause>` and terminates the current actor if the child
+/// actor failed or lost connection.  So this can be used in actors to
+/// cascade failure upwards until it reaches an ancestor that can
+/// handle it.
+///
+/// Note that this does not terminate this actor if the child actor
+/// terminated successfully or if it was killed or dropped.  Only
+/// failure or lost connection is passed on as a failure.  If the
+/// child is never expected to terminate early, consider using
+/// [`ret_fail!`] instead, or writing your own termination handler if
+/// the situation is more complex.
+///
+/// The arguments are treated as for [`fail!`], calling on to
+/// [`Cx::fail`], [`Cx::fail_str`] or [`Cx::fail_string`].
+///
+/// Note that errors are not normally chained in **Stakker**, i.e. the
+/// failure wouldn't normally contain details of the failures which
+/// lead to that failure.  The detailed history of a failure can be
+/// analyzed by running with the **logger** feature enabled, and
+/// looking at `Open` and `Close` events.
+///
+/// [`Cx::fail_str`]: struct.Cx.html#method.fail_str
+/// [`Cx::fail_string`]: struct.Cx.html#method.fail_string
+/// [`Cx::fail`]: struct.Cx.html#method.fail
+/// [`Ret`]: struct.Ret.html
+/// [`actor!`]: macro.actor.html
+/// [`actor_new!`]: macro.actor_new.html
+/// [`fail!`]: macro.fail.html
+/// [`ret_fail!`]: macro.ret_fail.html
+#[macro_export]
+macro_rules! ret_failthru {
+    ($cx:expr, $msg:literal) => {{
+        $crate::COVERAGE!(ret_failthru_0);
+        let cx: &mut $crate::Cx<'_, _> = $cx;
+        let actor = cx.this().clone();
+        $crate::Ret::some_to_actor(actor, move |_, cx, m: StopCause| {
+            if matches!(m, StopCause::Lost | StopCause::Failed(_)) {
+                cx.fail_str($msg);
+            }
+        })
+    }};
+    ($cx:expr, $fmt:literal $(, $arg:expr)*) => {{
+        $crate::COVERAGE!(ret_failthru_1);
+        let message = format!($fmt $(, $arg)*);
+        let cx: &mut $crate::Cx<'_, _> = $cx;
+        let actor = cx.this().clone();
+        $crate::Ret::some_to_actor(actor, move |_, cx, m: StopCause| {
+            if matches!(m, StopCause::Lost | StopCause::Failed(_)) {
+                cx.fail_string(message);
+            }
+        })
+    }};
+    ($cx:expr, $error:expr) => {{
+        $crate::COVERAGE!(ret_failthru_2);
+        let error = $error;
+        let cx: &mut $crate::Cx<'_, _> = $cx;
+        let actor = cx.this().clone();
+        $crate::Ret::some_to_actor(actor, move |_, cx, m: StopCause| {
+            if matches!(m, StopCause::Lost | StopCause::Failed(_)) {
+                cx.fail(error)
+            }
+        })
+    }};
+}
+
+/// Indicate failure of the actor
+///
+/// ```ignore
+/// fail!(cx, "format...", fmt-args...);
+/// fail!(cx, "literal...");
+/// fail!(cx, error);
+/// ```
+///
+/// The first form creates a formatted string using `format!`, and
+/// passes it to [`Cx::fail_string`].  The second form passes the
+/// given literal directly to [`Cx::fail_str`].  The third form passes
+/// the given error expression directly to [`Cx::fail`].
+///
+/// As soon as the currently-running actor call finishes, the actor
+/// will be terminated.  Actor state will be dropped, and any further
+/// calls to this actor will be discarded.  The termination status is
+/// passed back to the [`StopCause`] handler provided when the actor
+/// was created.
+///
+/// [`Cx::fail_str`]: struct.Cx.html#method.fail_str
+/// [`Cx::fail_string`]: struct.Cx.html#method.fail_string
+/// [`Cx::fail`]: struct.Cx.html#method.fail
+/// [`StopCause`]: enum.StopCause.html
+#[macro_export]
+macro_rules! fail {
+    ($cx:expr, $msg:literal) => {{
+        $crate::COVERAGE!(fail_0);
+        $cx.fail_str($msg);
+    }};
+    ($cx:expr, $fmt:literal $(, $arg:expr)*) => {{
+        $crate::COVERAGE!(fail_1);
+        $cx.fail_string(format!($fmt $(, $arg)*));
+    }};
+    ($cx:expr, $error:expr) => {{
+        $crate::COVERAGE!(fail_2);
+        $cx.fail($error);
+    }};
+}
+
+/// Indicate successful termination of the actor
+///
+/// ```ignore
+/// stop!(cx);
+/// ```
+///
+/// This just calls [`Cx::stop`].  It is included for symmetry with
+/// [`fail!`].
+///
+/// As soon as the currently-running actor call finishes, the actor
+/// will be terminated.  Actor state will be dropped, and any further
+/// calls to this actor will be discarded.  The termination status is
+/// passed back to the [`StopCause`] handler provided when the actor
+/// was created.
+///
+/// [`Cx::stop`]: struct.Cx.html#method.stop
+/// [`StopCause`]: enum.StopCause.html
+/// [`fail!`]: macro.fail.html
+#[macro_export]
+macro_rules! stop {
+    ($cx:expr) => {{
+        $crate::COVERAGE!(stop_0);
+        $cx.stop();
+    }};
+}
+
+/// Kill an actor
+///
+/// ```ignore
+/// kill!(actor, "format...", fmt-args...);
+/// kill!(actor, "literal...");
+/// kill!(actor, error);
+/// ```
+///
+/// This kills another actor asynchronously.  The kill is deferred to
+/// the main queue to execute as soon as possible.  `actor` must be an
+/// `ActorOwn` reference.  It's not possible to kill another actor
+/// with a simple `Actor` reference.
+///
+/// The first form creates a formatted string using `format!`, and
+/// passes it to [`ActorOwn::kill_string`].  The second form passes
+/// the given literal directly to [`ActorOwn::kill_str`].  The third
+/// form passes the given error expression directly to
+/// [`ActorOwn::kill`].
+///
+/// [`ActorOwn::kill_str`]: struct.ActorOwn.html#method.kill_str
+/// [`ActorOwn::kill_string`]: struct.ActorOwn.html#method.kill_string
+/// [`ActorOwn::kill`]: struct.ActorOwn.html#method.kill
+#[macro_export]
+macro_rules! kill {
+    ($actor:expr, $msg:literal) => {{
+        $crate::COVERAGE!(kill_0);
+        let actor: $crate::ActorOwn<_> = $actor.owned();
+        $actor.defer(move |s| actor.kill_str(s, $msg));
+    }};
+    ($actor:expr, $fmt:literal $(, $arg:expr)*) => {{
+        $crate::COVERAGE!(kill_1);
+        let actor: $crate::ActorOwn<_> = $actor.owned();
+        let msg = format!($fmt $(, $arg)*);
+        $actor.defer(move |s| actor.kill_string(s, msg));
+    }};
+    ($actor:expr, $error:expr) => {{
+        $crate::COVERAGE!(kill_2);
+        let actor: $crate::ActorOwn<_> = $actor.owned();
+        let error = $error;
+        $actor.defer(move |s| actor.kill(s, error));
     }};
 }
