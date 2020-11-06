@@ -33,22 +33,33 @@ pub struct FixedTimerKey {
 
 /// Timer key for a Max timer
 ///
-/// Used by `timer_max_*` methods in [`Core`].  It is used to delete a
-/// timer or change its expiry time.  It is plain `Copy` data, 8 bytes
-/// long.  Note that the key should only be used on this same
-/// **Stakker** instance.  If it is used on another then it might
-/// cause a panic.
+/// Used by the [`timer_max!`] macro and the `timer_max_*` methods in
+/// [`Core`].  It can be used to delete a timer or change its expiry
+/// time.  It is plain `Copy` data, 8 bytes long.  Note that the key
+/// should only be used on this same **Stakker** instance.  If it is
+/// used on another then it might cause a panic.
 ///
-/// This sets a timer at the initial timeout time, then just records
-/// the largest of the timeout values provided until that original
-/// timer expires, at which point it sets a new timer.  So this
-/// naturally absorbs a lot of changes without having to delete any
-/// timers.  A typical use might be to take some action in a gap in
-/// activity, for example to do an expensive background check in a gap
-/// in the user's typing into a UI field.  To implement this, the
-/// timer expiry time is set to now+1 (for example) by each keypress.
+/// A "max" timer sets a timer at the first-provided timeout time,
+/// then just records the largest of the timeout values provided until
+/// that original timer expires, at which point it sets a new timer.
+/// So this naturally absorbs a lot of changes without having to
+/// delete any timers.  A typical use might be to take some action in
+/// a gap in activity, for example to do an expensive background check
+/// in a gap in the user's typing into a UI field.  To implement this,
+/// the timer expiry time might be set to 'now' + 300ms by each
+/// keypress, for example:
+///
+/// ```ignore
+/// fn handle_keypress(&mut self, cx: CX![], ...) {
+///     :::
+///     timer_max!(&mut self.timer,
+///                cx.now() + Duration::from_millis(300),
+///                [cx], check_focus_field());
+/// }
+/// ```
 ///
 /// [`Core`]: struct.Core.html
+/// [`timer_max!`]: macro.timer_max.html
 #[derive(Copy, Clone, Eq, PartialEq, Default, Debug)]
 pub struct MaxTimerKey {
     slot: u32, // Slot number
@@ -57,23 +68,24 @@ pub struct MaxTimerKey {
 
 /// Timer key for a Min timer
 ///
-/// Used by `timer_min_*` methods in [`Core`].  It is used to delete a
-/// timer or change its expiry time.  It is plain `Copy` data, 8 bytes
-/// long.  Note that the key should only be used on this same
-/// **Stakker** instance.  If it is used on another then it might
-/// cause a panic.
+/// Used by the [`timer_min!`] macro and the `timer_min_*` methods in
+/// [`Core`].  It can be used to delete a timer or change its expiry
+/// time.  It is plain `Copy` data, 8 bytes long.  Note that the key
+/// should only be used on this same **Stakker** instance.  If it is
+/// used on another then it might cause a panic.
 ///
-/// This is intended for use where the end-time is an estimate and
-/// where that estimate is progressively improved over time.  The
-/// end-time is approached asymptotically to allow wiggle-room
-/// without having to update the underlying timer too many times,
-/// e.g. a 60s timer uses 5 timers in sequence, adjusting as it
-/// goes according to the latest estimate: ~15s before, ~4s
-/// before, ~1s before, ~0.125s before, end-time itself.  So for
-/// example in the first 45s, the timer can accomodate up to 15s
-/// of change in the end-time without having to delete a timer.
+/// A "min" timer is intended for use where the end-time is an
+/// estimate and where that estimate is progressively improved over
+/// time.  The end-time is approached asymptotically to allow
+/// wiggle-room without having to update the underlying timer too many
+/// times, e.g. a 60s timer uses 5 timers in sequence, adjusting as it
+/// goes according to the latest estimate: ~15s before, ~4s before,
+/// ~1s before, ~0.125s before, then end-time itself.  So for example
+/// in the first 45s, the timer can accomodate up to 15s of change in
+/// the end-time without having to delete a timer.
 ///
 /// [`Core`]: struct.Core.html
+/// [`timer_min!`]: macro.timer_min.html
 #[derive(Copy, Clone, Eq, PartialEq, Default, Debug)]
 pub struct MinTimerKey {
     slot: u32, // Slot number

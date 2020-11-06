@@ -45,8 +45,9 @@ use std::rc::Rc;
 /// [`Share`] item due to borrowing restrictions.  If you need a
 /// [`Core`] reference, then use arguments of "`this: &Share<Self>,
 /// core: &mut Core`" instead of "`&mut self`", and do `self` access
-/// via `this.rw(core)`.  (However also ask yourself whether maybe
-/// this should be made into an actor instead.)
+/// via `this.rw(core)`.  (However if it's getting this complicated,
+/// maybe consider whether the shared data should be made into an
+/// actor instead, or whether some other approach would be better.)
 ///
 /// By default borrow-checking of access to the contents of the
 /// [`Share`] is handled at compile-time using a `TCell` or `TLCell`

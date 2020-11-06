@@ -248,9 +248,13 @@ macro_rules! actor_new {
 /// s.run(Instant::now(), false);
 /// ```
 ///
+/// See also [`ActorOwnAnon`] for an alterative approach to the same
+/// problem.
+///
 /// Implemented using [`ActorOwn::new`].
 ///
 /// [`ActorOwn::new`]: struct.ActorOwn.html#method.new
+/// [`ActorOwnAnon`]: struct.ActorOwnAnon.html
 #[macro_export]
 macro_rules! actor_of_trait {
     ($core:expr, $trait:ident, $type:ident :: $init:ident($($x:expr),* $(,)? ), $notify:expr) => {{
@@ -364,12 +368,11 @@ macro_rules! generic_call_prep {
 /// - `[actor]`: This is used for calls to another actor.  The call is
 /// made through the actor's built-in [`Deferrer`].
 ///
-/// - `[actor, cx]` or `[actor, core]`: This is also used for calls to
-/// another actor.  The call is made via [`Core`], which might be
-/// slightly faster if the [`Deferrer`] is inlined as it may avoid a
-/// cache miss.  Note that this form is always required for other
-/// macros such as [`after!`], [`idle!`], etc which must go via
-/// [`Core`].
+/// - `[actor, cx]` or `[actor, core]`: This may also be used instead
+/// of `[actor]`.  The call is made via [`Core`], which might be
+/// slightly faster if the [`Deferrer`] instances are being inlined,
+/// but otherwise gives no advantage compared to the plain `[actor]`
+/// form.
 ///
 /// ```ignore
 /// // Call a method in this actor or in another actor
@@ -387,8 +390,7 @@ macro_rules! generic_call_prep {
 /// call!([cx], |this, cx| ...code...);   // Inline code which refers to this actor
 /// call!([core], |stakker| ...code...);  // Generic inline code (`&mut Stakker` arg)
 ///
-/// // For macros other than `call!`, it's necessary to also specify a
-/// // `core` or `cx` reference when calling another actor
+/// // Optionally specifying a `core` or `cx` reference
 /// call!([actorxx, core], method(arg1, arg2...));
 /// call!([actoryy, core], Type::method(arg1, arg2...));
 /// call!([actorzz, core], <path::Type>::method(arg1, arg2...));
@@ -429,9 +431,7 @@ macro_rules! generic_call_prep {
 /// [`Core`]: struct.Core.html
 /// [`Cx`]: struct.Cx.html
 /// [`Deferrer`]: struct.Deferrer.html
-/// [`after!`]: macro.after.html
 /// [`call!`]: macro.call.html
-/// [`idle!`]: macro.idle.html
 #[macro_export]
 macro_rules! call {
     ( $($x:tt)+ ) => {{
@@ -450,13 +450,42 @@ macro_rules! call_aux {
 
 /// Lazily perform an actor call or inline code
 ///
-/// The call syntax accepted is identical to the [`call!`] macro.
-/// However the plain `[actor], ...` form is not accepted because a
-/// [`Core`] reference is always needed.  This queues calls to the
-/// lazy queue which is run only after the normal defer queue has been
-/// completely exhausted.  This can be used to run something at the
-/// end of this batch of processing, for example to flush buffers
-/// after accumulating data.
+/// This queues calls to the lazy queue which is run only after the
+/// normal defer queue has been completely exhausted.  This can be
+/// used to run something at the end of this batch of processing, for
+/// example to flush buffers after accumulating data.
+///
+/// Note that in the examples below, in general there can be any
+/// number of arguments, including zero.  The number of arguments
+/// depends on the signature of the called method.  All of these
+/// values may be full Rust expressions, which are evaluated at the
+/// call-site before queuing the call.
+///
+/// Note that the part in square brackets gives the context of the
+/// call, which takes one of these forms:
+///
+/// - `[cx]`: This is used for calls to the same actor
+///
+/// - `[actor, cx]` or `[actor, core]`: This is used for calls to
+/// another actor.  The second argument is used to get access to
+/// [`Core`] which is used to submit the call to the correct queue.
+///
+/// ```ignore
+/// // Call a method in this actor or in another actor
+/// lazy!([cx], method(arg1, arg2...));
+/// lazy!([actorxx, core], method(arg1, arg2...));
+///
+/// // Call a method whilst the actor is in the 'Prep' state, before it
+/// // has a `Self` instance.  `Type` here in the first line may be `Self`.
+/// lazy!([cx], Type::method(arg1, arg2...));
+/// lazy!([cx], <path::Type>::method(arg1, arg2...));
+/// lazy!([actoryy, core], Type::method(arg1, arg2...));
+/// lazy!([actorzz, core], <path::Type>::method(arg1, arg2...));
+///
+/// // Defer a call to inline code.  Closure is always treated as a `move` closure
+/// lazy!([cx], |this, cx| ...code...);   // Inline code which refers to this actor
+/// lazy!([core], |stakker| ...code...);  // Generic inline code (`&mut Stakker` arg)
+/// ```
 ///
 /// Implemented using [`Core::lazy`], [`Actor::apply`] and
 /// [`Actor::apply_prep`].
@@ -465,7 +494,6 @@ macro_rules! call_aux {
 /// [`Actor::apply`]: struct.Actor.html#method.apply
 /// [`Core::lazy`]: struct.Core.html#method.lazy
 /// [`Core`]: struct.Core.html
-/// [`call!`]: macro.call.html
 #[macro_export]
 macro_rules! lazy {
     ( $($x:tt)+ ) => {{
@@ -484,13 +512,12 @@ macro_rules! lazy_aux {
 
 /// Perform an actor call or inline code when the thread becomes idle
 ///
-/// The call syntax accepted is identical to the [`call!`] macro.
-/// However the `[actor], ...` form is not accepted because a [`Core`]
-/// reference is always needed.  This queues calls to the idle queue
-/// which is run only when there is nothing left to run in the normal
-/// and lazy queues, and there is no I/O pending.  This can be used to
-/// create backpressure in the case of processing overload, i.e. fetch
-/// more data only when all current data has been fully processed.
+/// This queues calls to the idle queue which is run only when there
+/// is nothing left to run in the normal and lazy queues, and there is
+/// no I/O pending.  This can be used to create backpressure in the
+/// case of processing overload, i.e. fetch more data only when all
+/// current data has been fully processed.  The call syntax accepted
+/// is identical to the [`lazy!`] macro.
 ///
 /// Implemented using [`Core::idle`], [`Actor::apply`] and
 /// [`Actor::apply_prep`].
@@ -498,8 +525,7 @@ macro_rules! lazy_aux {
 /// [`Actor::apply_prep`]: struct.Actor.html#method.apply_prep
 /// [`Actor::apply`]: struct.Actor.html#method.apply
 /// [`Core::idle`]: struct.Core.html#method.idle
-/// [`Core`]: struct.Core.html
-/// [`call!`]: macro.call.html
+/// [`lazy!`]: macro.lazy.html
 #[macro_export]
 macro_rules! idle {
     ( $($x:tt)+ ) => {{
@@ -518,14 +544,13 @@ macro_rules! idle_aux {
 
 /// After a delay, perform an actor call or inline code
 ///
-/// The syntax of the calls is identical to [`call!`], but with a
-/// `Duration` argument first.  However the `[actor], ...` form is not
-/// accepted because a [`Core`] reference is always needed.  Returns a
-/// [`FixedTimerKey`] which can be used to delete the timer if
-/// necessary.  See also [`at!`].
+/// The syntax of the calls is identical to [`lazy!`], but with a
+/// `Duration` argument first.  Returns a [`FixedTimerKey`] which can
+/// be used to delete the timer if necessary using
+/// [`Core::timer_del`].  See also [`at!`].
 ///
 /// ```ignore
-/// after!(dur, ...args-as-for-call-macro...);
+/// after!(dur, ...args-as-for-lazy-macro...);
 /// ```
 ///
 /// Implemented using [`Core::after`], [`Actor::apply`] and
@@ -534,10 +559,10 @@ macro_rules! idle_aux {
 /// [`Actor::apply_prep`]: struct.Actor.html#method.apply_prep
 /// [`Actor::apply`]: struct.Actor.html#method.apply
 /// [`Core::after`]: struct.Core.html#method.after
-/// [`Core`]: struct.Core.html
+/// [`Core::timer_del`]: struct.Core.html#method.timer_del
 /// [`FixedTimerKey`]: struct.FixedTimerKey.html
 /// [`at!`]: macro.at.html
-/// [`call!`]: macro.call.html
+/// [`lazy!`]: macro.lazy.html
 #[macro_export]
 macro_rules! after {
     ( $dur:expr, $($x:tt)+ ) => {{
@@ -557,14 +582,13 @@ macro_rules! after_aux {
 
 /// At the given `Instant`, perform an actor call or inline code
 ///
-/// The syntax of the calls is identical to [`call!`], but with an
-/// `Instant` argument first.  However the `[actor], ...` form is not
-/// accepted because a [`Core`] reference is always needed.  Returns a
-/// [`FixedTimerKey`] which can be used to delete the timer if
-/// necessary.  See also [`after!`].
+/// The syntax of the calls is identical to [`lazy!`], but with an
+/// `Instant` argument first.  Returns a [`FixedTimerKey`] which can
+/// be used to delete the timer if necessary using
+/// [`Core::timer_del`].  See also [`after!`].
 ///
 /// ```ignore
-/// at!(instant, ...args-as-for-call-macro...);
+/// at!(instant, ...args-as-for-lazy-macro...);
 /// ```
 ///
 /// Implemented using [`Core::timer_add`], [`Actor::apply`] and
@@ -573,10 +597,10 @@ macro_rules! after_aux {
 /// [`Actor::apply_prep`]: struct.Actor.html#method.apply_prep
 /// [`Actor::apply`]: struct.Actor.html#method.apply
 /// [`Core::timer_add`]: struct.Core.html#method.timer_add
-/// [`Core`]: struct.Core.html
+/// [`Core::timer_del`]: struct.Core.html#method.timer_del
 /// [`FixedTimerKey`]: struct.FixedTimerKey.html
 /// [`after!`]: macro.after.html
-/// [`call!`]: macro.call.html
+/// [`lazy!`]: macro.lazy.html
 #[macro_export]
 macro_rules! at {
     ( $inst:expr, $($x:tt)+ ) => {{
@@ -597,25 +621,24 @@ macro_rules! at_aux {
 /// Create or update a "Max" timer
 ///
 /// A "Max" timer expires at the latest (greatest) expiry time
-/// provided.  Modifies a [`MaxTimerKey`] variable or structure member
-/// provided by the caller, which should be initialised with
-/// `Default::default()` (which is an invalid timer key).  If the
-/// timer key currently in the variable is invalid or expired, then a
-/// new timer is created using the call-args following, and the key
-/// stored in the variable.  Otherwise the timer expiry time is
-/// updated with the maximum of the current and provided expiry times,
-/// and the call-args are ignored.  The timer may be deleted using
+/// provided.  See the [`MaxTimerKey`] documentation for the
+/// characteristics of this timer.  Modifies a [`MaxTimerKey`]
+/// variable or structure member provided by the caller, which should
+/// be initialised with `MaxTimerKey::default()`.  If the timer key
+/// currently in the variable is invalid or expired, then a new timer
+/// is created using the call-args following, and the key stored in
+/// the variable.  Otherwise the timer contained in the variable is
+/// updated with the provided expiry time, and the call-args are
+/// ignored.  If necessary, the timer may be deleted using
 /// [`Core::timer_max_del`].
 ///
-/// The syntax of the calls is identical to [`call!`], but with a
-/// variable reference and `Instant` argument first.  However the
-/// plain `[actor], ...` form is not accepted because a [`Core`]
-/// reference is always needed.
+/// The syntax of the calls is identical to [`lazy!`], but with a
+/// variable reference and `Instant` argument first.
 ///
 /// ```ignore
-/// let mut var = Default::default();
+/// let mut var = MaxTimerKey::default();
 ///   :::
-/// timer_max!(&mut var, instant, ...args-as-for-call-macro...);
+/// timer_max!(&mut var, instant, ...args-as-for-lazy-macro...);
 /// ```
 ///
 /// Implemented using [`Core::timer_max_upd`],
@@ -627,9 +650,8 @@ macro_rules! at_aux {
 /// [`Core::timer_max_add`]: struct.Core.html#method.timer_max_add
 /// [`Core::timer_max_del`]: struct.Core.html#method.timer_max_del
 /// [`Core::timer_max_upd`]: struct.Core.html#method.timer_max_upd
-/// [`Core`]: struct.Core.html
 /// [`MaxTimerKey`]: struct.MaxTimerKey.html
-/// [`call!`]: macro.call.html
+/// [`lazy!`]: macro.lazy.html
 #[macro_export]
 macro_rules! timer_max {
     ( $var:expr, $inst:expr, $($x:tt)+ ) => {{
@@ -653,25 +675,24 @@ macro_rules! timer_max_aux {
 /// Create or update a "Min" timer
 ///
 /// A "Min" timer expires at the smallest (earliest) expiry time
-/// provided.  Modifies a [`MinTimerKey`] variable or structure member
-/// provided by the caller, which should be initialised with
-/// `Default::default()` (which is an invalid timer key).  If the
-/// timer key currently in the variable is invalid or expired, then a
-/// new timer is created using the call-args following, and the key
-/// stored in the variable.  Otherwise the timer expiry time is
-/// updated with the minimum of the current and provided expiry times,
-/// and the call-args are ignored.  The timer may be deleted using
+/// provided.  See the [`MinTimerKey`] documentation for the
+/// characteristics of this timer.  Modifies a [`MinTimerKey`]
+/// variable or structure member provided by the caller, which should
+/// be initialised with `MinTimerKey::default()`.  If the timer key
+/// currently in the variable is invalid or expired, then a new timer
+/// is created using the call-args following, and the key stored in
+/// the variable.  Otherwise the timer contained in the variable is
+/// updated with the provided expiry time, and the call-args are
+/// ignored.  If necessary, the timer may be deleted using
 /// [`Core::timer_min_del`].
 ///
-/// The syntax of the calls is identical to [`call!`], but with a
-/// variable reference and `Instant` argument first.  However the
-/// plain `[actor], ...` form is not accepted because a [`Core`]
-/// reference is always needed.
+/// The syntax of the calls is identical to [`lazy!`], but with a
+/// variable reference and `Instant` argument first.
 ///
 /// ```ignore
-/// let mut var = Default::default();
+/// let mut var = MinTimerKey::default();
 ///   :::
-/// timer_min!(&mut var, instant, ...args-as-for-call-macro...);
+/// timer_min!(&mut var, instant, ...args-as-for-lazy-macro...);
 /// ```
 ///
 /// Implemented using [`Core::timer_min_upd`],
@@ -683,9 +704,8 @@ macro_rules! timer_max_aux {
 /// [`Core::timer_min_add`]: struct.Core.html#method.timer_min_add
 /// [`Core::timer_min_del`]: struct.Core.html#method.timer_min_del
 /// [`Core::timer_min_upd`]: struct.Core.html#method.timer_min_upd
-/// [`Core`]: struct.Core.html
 /// [`MinTimerKey`]: struct.MinTimerKey.html
-/// [`call!`]: macro.call.html
+/// [`lazy!`]: macro.lazy.html
 #[macro_export]
 macro_rules! timer_min {
     ( $var:expr, $inst:expr, $($x:tt)+ ) => {{
@@ -960,12 +980,14 @@ macro_rules! fwd_nop {
 
 /// Create a [`Ret`] instance for actor calls
 ///
-/// This is guaranteed to be called **exactly once**, even if dropped.
-/// The message is passed as `Some(msg)` if called normally, or as
-/// `None` if the [`Ret`] instance was dropped (e.g. if it couldn't be
-/// delivered somewhere).  The underlying closure is a `FnOnce`, so
-/// non-Copy types can be passed.  The syntax is the same as for
-/// [`fwd_to!`], and the message types are specified as normal.
+/// This is guaranteed to be called **exactly once**.  So it will be
+/// called even if the [`Ret`] is dropped.  (The guarantee can be
+/// broken by leaking memory using `mem::forget`, though, so don't do
+/// that!)  The message is passed as `Some(msg)` if called normally,
+/// or as `None` if the [`Ret`] instance was dropped, e.g. if it
+/// couldn't be delivered somewhere.  The underlying closure is a
+/// `FnOnce`, so non-Copy types can be passed.  The syntax is the same
+/// as for [`fwd_to!`], and the message types are specified as normal.
 /// However the message is received in a single argument on the
 /// receiving method, either `Option<type>` for a single type, or else
 /// `Option<(type1, type2...)>`.

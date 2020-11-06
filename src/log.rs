@@ -66,14 +66,14 @@ use std::str::FromStr;
 /// error.  This is intentional.  Other approaches were considered,
 /// coded up and discarded: both `std::fmt`'s approach which
 /// effectively returns `Result<(), ()>` and insists that the visitor
-/// store the full error, and **slog**'s approach which tries to wrap
-/// various different types within its error type.  Given that the
-/// non-error case will be most common, there is little advantage in
-/// letting the visit terminate early.  So, as for `std::fmt`, if the
-/// visitor encounters an error, it needs to store it itself.  It will
-/// then generally choose to set things up so that any further calls
-/// are ignored.  If that makes the code awkward, it can usually be
-/// made manageable with a macro.
+/// store the full error, and the approach used by `slog` which tries
+/// to wrap various different types within its error type.  Given that
+/// the non-error case will be most common, there is little advantage
+/// in letting the visit terminate early.  So, as for `std::fmt`, if
+/// the visitor encounters an error, it needs to store it itself.  It
+/// will then generally choose to set things up so that any further
+/// calls are ignored.  If that makes the code awkward, it can usually
+/// be made manageable with a macro.
 pub trait LogVisitor {
     fn kv_u64(&mut self, key: Option<&str>, val: u64);
     fn kv_i64(&mut self, key: Option<&str>, val: i64);
@@ -94,7 +94,7 @@ pub struct LogRecord<'a> {
     pub id: LogID,
     /// Logging level
     pub level: LogLevel,
-    /// Logging target
+    /// Logging target, or ""
     pub target: &'a str,
     /// Freeform formatted text.  This can be output with any macro
     /// that accepts a format-string, e.g. `println!("{}", fmt)`.
@@ -109,11 +109,11 @@ pub struct LogRecord<'a> {
 
 /// Logging span identifier
 ///
-/// A span is a period of time.  It is marked by an `Open` logging
-/// event, any number of normal logging events and then a `Close`
-/// event, all associated with the same [`LogID`].  It corresponds to
-/// the lifetime of an actor, or a call, or whatever other process is
-/// being described.
+/// A span is a period of time.  It is marked by a [`LogLevel::Open`]
+/// logging event, any number of normal logging events and then a
+/// [`LogLevel::Close`] event, all associated with the same [`LogID`].
+/// It corresponds to the lifetime of an actor, or a call, or whatever
+/// other process is being described.
 ///
 /// The [`LogID`] numbers are allocated sequentially from one, with
 /// zero reserved for "none" or "missing".  If 2^64 values are
@@ -122,6 +122,8 @@ pub struct LogRecord<'a> {
 /// and warn or terminate the process.
 ///
 /// [`LogID`]: type.LogID.html
+/// [`LogLevel::Close`]: enum.LogLevel.html#variant.Close
+/// [`LogLevel::Open`]: enum.LogLevel.html#variant.Open
 pub type LogID = u64;
 
 /// Levels for logging
@@ -157,9 +159,9 @@ pub enum LogLevel {
     Audit = 5,
 
     /// Span open.  For an actor, this means actor startup.  The
-    /// formatted text contains the name of the object, e.g. the
-    /// aactor name. If the parent logging-ID is known, it is passed
-    /// as a `parent` key-value pair.
+    /// formatted text contains the name of the object, e.g. the actor
+    /// name. If the parent logging-ID is known, it is passed as a
+    /// `parent` key-value pair.
     Open = 6,
 
     /// Span close.  For an actor, this means actor termination.  The
@@ -262,11 +264,11 @@ impl Display for LogLevelError {
 /// Filter for logging levels
 ///
 /// This is a "copy" value which represents a set of enabled logging
-/// levels.  It can be combined with other filters using the `|` and
-/// `|=` bit-or operators.  It can be generated from [`LogLevel`]
-/// using [`LogFilter::from`].  Note that converting from a
-/// [`LogLevel`] will also enable any related levels -- see
-/// [`LogFilter::from`] documentation.
+/// levels.  Filters can be combined using the `|` and `|=` bit-or
+/// operators.  A filter can be generated from a [`LogLevel`] using
+/// [`LogFilter::from`].  Note that converting from a [`LogLevel`]
+/// will also enable any related levels -- see [`LogFilter::from`]
+/// documentation.
 ///
 /// [`LogFilter::from`]: struct.LogFilter.html#method.from
 /// [`LogLevel`]: enum.LogLevel.html

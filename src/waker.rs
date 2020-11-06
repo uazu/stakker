@@ -274,9 +274,13 @@ impl Waker {
     /// Note that this operation has to be as cheap as possible
     /// because with a channel for example, you'll need to call it
     /// every time you add an item.  Trying to detect when you add the
-    /// first item to an empty queue is unreliable due to races,
-    /// unless the channel has specific support for that, some kind of
-    /// `send_and_was_empty()` call.
+    /// first item to an empty queue is unreliable due to races (for
+    /// example calling `channel.is_empty()` first and then
+    /// `channel.send()` would race with the main thread removing
+    /// items).  So unless the channel has specific support for
+    /// detecting writing to an empty queue (some kind of
+    /// `channel.send_and_was_empty()` call), it's necessary to wake
+    /// on every send.
     ///
     /// [`Waker`]: struct.Waker.html
     pub fn wake(&self) {

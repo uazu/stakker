@@ -18,12 +18,12 @@ use crate::Stakker;
 /// instances have a [`Deferrer`] built in which can be used from
 /// outside the actor as [`Actor::defer`].
 ///
-/// Note that in cleanup, deferring an action after the main loop has
-/// stopped running the [`Stakker`] queues or after the [`Stakker`]
-/// instance has been dropped will be accepted but the call will never
-/// execute.  So make sure that all actors are terminated before the
-/// last run of the [`Stakker`] queues if you need cleanup actions to
-/// complete.
+/// Note that in final shutdown of a **Stakker** system, deferring an
+/// action after the main loop has stopped running the [`Stakker`]
+/// queues or after the [`Stakker`] instance has been dropped will be
+/// accepted but the call will never execute.  So make sure that all
+/// actors are terminated before the last run of the [`Stakker`]
+/// queues if you need cleanup actions to complete.
 ///
 /// [`Actor::defer`]: struct.Actor.html#method.defer
 /// [`Actor`]: struct.Actor.html

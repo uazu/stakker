@@ -15,16 +15,14 @@ use std::time::{Duration, Instant, SystemTime};
 
 /// The external interface to the actor runtime
 ///
-/// It contains all the queues and timers, and controls access to the
-/// state of all the actors.  It also provides the interface to
-/// control all this from outside, i.e. the calls used by an event
-/// loop.  The [`Stakker`] instance itself is not accessible from
-/// actors due to borrowing restrictions.  It derefs to `&mut Core`
-/// (through auto-deref or `*stakker`).  [`Core`] is also accessible
-/// to actors through their [`Cx`] context reference.
+/// This contains all the queues and timers, and controls access to
+/// the state of all the actors.  It also provides the interface to
+/// control all this from outside the runtime, i.e. it provides the
+/// calls used by an event loop.  The [`Stakker`] instance itself is
+/// not accessible from actors due to borrowing restrictions.  It
+/// derefs to a [`Core`] reference through auto-deref or `*stakker`.
 ///
 /// [`Core`]: struct.Core.html
-/// [`Cx`]: struct.Cx.html
 /// [`Stakker`]: struct.Stakker.html
 pub struct Stakker {
     pub(crate) core: Core,
@@ -171,10 +169,10 @@ impl Stakker {
     ///
     /// The provided logger will be called synchronously every time a
     /// [`Core::log`] call is made if the logging level is enabled.
-    /// It is provided with a `Core` reference, so can access a
-    /// `Share`, or defer calls to actors as necessary.  It may
+    /// It is provided with a [`Core`] reference, so can access a
+    /// [`Share`], or defer calls to actors as necessary.  It may
     /// alternatively choose to forward the logging to an external log
-    /// framework, such as the **log** or **tracing** crates.
+    /// framework, such as the `log` or `tracing` crates.
     ///
     /// The enabled logging levels are described by `filter`.
     /// Typically you'd set something like
@@ -184,17 +182,19 @@ impl Stakker {
     /// See [`LogFilter`].
     ///
     /// Note that the **logger** feature must be enabled for this call
-    /// to succeed.  The **stakker** crate provides only the core
+    /// to succeed.  The **Stakker** crate provides only the core
     /// logging functionality.  It adds a 64-bit logging ID to each
     /// actor and logs actor startup and termination.  It provides the
     /// framework for logging formatted-text and key-value pairs along
     /// with an actor's logging-ID for context.  An external crate
-    /// like **stakker_log** may be used to provide macros that allow
+    /// like `stakker_log` may be used to provide macros that allow
     /// convenient logging from actor code and to allow interfacing to
     /// external logging systems.
     ///
     /// [`Core::log`]: struct.Core.html#method.log
+    /// [`Core`]: struct.Core.html
     /// [`LogFilter`]: struct.LogFilter.html
+    /// [`Share`]: struct.Share.html
     #[inline]
     #[allow(unused_variables)]
     pub fn set_logger(
@@ -212,17 +212,23 @@ impl Stakker {
     }
 
     /// Used to provide **Stakker** with a means to wake the main
-    /// thread.  This enables [`Waker`] and associated functionality.
-    /// A poll-waker is not required otherwise.
+    /// thread from another thread.  This enables [`Waker`] and
+    /// associated functionality.  A poll-waker is not required
+    /// otherwise.
     ///
     /// Normally the main thread will be blocked waiting for I/O
     /// events most of the time, with a timeout to handle the
-    /// next-expiring timer.  If another thread wants to defer a call
-    /// to the main thread, then it needs a way to interrupt that
-    /// blocked call.  This is done via creating an artificial I/O
-    /// event.  (For example, `mio` handles this with a `mio::Waker`
-    /// instance which wraps various platform-specific ways of
-    /// creating an artificial I/O event.)
+    /// next-expiring timer.  If **Stakker** code running in another
+    /// thread wants to defer a call to the main thread, then it needs
+    /// a way to interrupt that blocked call.  This is done via
+    /// creating an artificial I/O event.  (For example, `mio` handles
+    /// this with a `mio::Waker` instance which wraps various
+    /// platform-specific ways of creating an artificial I/O event.)
+    ///
+    /// So **Stakker** calls the `waker` provided to this call, which
+    /// causes the I/O polling implementation to trigger an artificial
+    /// I/O event, which results in the I/O polling implementation
+    /// calling `Stakker::poll_wake()`.
     ///
     /// Normally the poll-waker will be set up automatically by the
     /// user's chosen I/O polling implementation (for example
@@ -237,9 +243,11 @@ impl Stakker {
         self.wake_handlers_unset = false;
     }
 
-    /// Indicate that the main thread has been woken up due to a call
-    /// from another thread to the waker configured with `set_poll_waker`.
-    /// **Stakker** uses this to do [`Waker`] handling.
+    /// Indicate to **Stakker** that the main thread has been woken up
+    /// due to a call from another thread to the waker configured with
+    /// `set_poll_waker`.  The I/O polling implementation
+    /// (e.g. `stakker_mio`) makes this call to let **Stakker** know
+    /// that it should do its [`Waker`] handling.
     ///
     /// [`Waker`]: struct.Waker.html
     pub fn poll_wake(&mut self) {
@@ -403,7 +411,9 @@ impl Core {
 
     /// Defer an operation to be executed later.  It is put on the
     /// main queue, and run as soon all operations preceding it have
-    /// been executed.
+    /// been executed.  See also the [`call!`] macro.
+    ///
+    /// [`call!`]: macro.call.html
     #[inline]
     pub fn defer(&mut self, f: impl FnOnce(&mut Stakker) + 'static) {
         self.deferrer.defer(f);
@@ -414,7 +424,9 @@ impl Core {
     /// has been completely cleared (including any further deferred
     /// items added whilst clearing that queue).  This can be used for
     /// flushing data generated in this batch of processing, for
-    /// example.
+    /// example.  See also the [`lazy!`] macro.
+    ///
+    /// [`lazy!`]: macro.lazy.html
     #[inline]
     pub fn lazy(&mut self, f: impl FnOnce(&mut Stakker) + 'static) {
         self.lazy_queue.push(f);
@@ -424,7 +436,10 @@ impl Core {
     /// becomes idle, i.e. when all other queues are empty and there
     /// is no I/O to process.  This can be used to implement
     /// backpressure on incoming streams, i.e. only fetch more data
-    /// once there is nothing else left to do.
+    /// once there is nothing else left to do.  See also the [`idle!`]
+    /// macro.
+    ///
+    /// [`idle!`]: macro.idle.html
     #[inline]
     pub fn idle(&mut self, f: impl FnOnce(&mut Stakker) + 'static) {
         self.idle_queue.push_back(Box::new(f));
@@ -432,7 +447,10 @@ impl Core {
 
     /// Delay an operation to be executed after a duration has passed.
     /// This is the same as adding it as a fixed timer.  Returns a key
-    /// that can be used to delete the timer.
+    /// that can be used to delete the timer.  See also the [`after!`]
+    /// macro.
+    ///
+    /// [`after!`]: macro.after.html
     #[inline]
     pub fn after(
         &mut self,
@@ -443,7 +461,10 @@ impl Core {
     }
 
     /// Add a fixed timer that expires at the given time.  Returns a
-    /// key that can be used to delete the timer.
+    /// key that can be used to delete the timer.  See also the
+    /// [`at!`] macro.
+    ///
+    /// [`at!`]: macro.at.html
     #[inline]
     pub fn timer_add(
         &mut self,
@@ -586,10 +607,22 @@ impl Core {
     /// This is intended to be used for storing certain global
     /// instances which actors may need to get hold of, for example an
     /// access-point for the I/O poll implementation that Stakker is
-    /// running under.
+    /// running under.  In other words the `anymap` is intended to
+    /// represent the environment.
+    ///
+    /// There's nothing I can do to stop you using this like an
+    /// inefficient global variable store, but doing that would be a
+    /// terrible idea.  Using the `anymap` that way breaks the actor
+    /// model and makes your code harder to reason about.  Really it
+    /// would be cleaner to use a [`Share`] if you need to break the
+    /// actor model and share data, because at least then the
+    /// interconnection between actors would be explicit, and trying
+    /// to move an interconnected actor to a remote machine would fail
+    /// immediately.
     ///
     /// [`Core::anymap_get`]: struct.Core.html#method.anymap_get
     /// [`Core::anymap_try_get`]: struct.Core.html#method.anymap_try_get
+    /// [`Share`]: struct.Share.html
     #[cfg_attr(not(feature = "anymap"), allow(unused_variables))]
     #[inline]
     pub fn anymap_set<T: Clone + 'static>(&mut self, val: T) {
@@ -644,7 +677,7 @@ impl Core {
 
     /// Get the reason for shutdown, if shutdown was requested.  After
     /// calling this, the shutdown flag is cleared,
-    /// i.e. [`Core::not_shutdown`] will return `false` and the event
+    /// i.e. [`Core::not_shutdown`] will return `true` and the event
     /// loop could continue to run.
     ///
     /// [`Core::not_shutdown`]: struct.Core.html#method.not_shutdown
@@ -720,14 +753,22 @@ impl Core {
         self.sharecell_owner.rw3(&s1.rc, &s2.rc, &s3.rc)
     }
 
-    /// Log a log-record to the current logger, if one is active and
-    /// if the log-level is enabled.  Otherwise it is ignored.  `id`
-    /// should be the logging-ID (obtained from `actor.id()` or
-    /// `cx.id()` or `core.log_span_open()` for non-actor spans) or 0
-    /// if the log-record doesn't belong to any span.
+    /// Pass a log-record to the current logger, if one is active and
+    /// if the log-level is enabled.  Otherwise the call is ignored.
+    /// `id` should be the logging-ID (obtained from `actor.id()` or
+    /// `cx.id()`, or `core.log_span_open()` for non-actor spans) or 0
+    /// if the log-record doesn't belong to any span.  The arguments
+    /// are used to form the [`LogRecord`] that is passed to the
+    /// logger.
     ///
-    /// Normally you would use a macro provided by an external crate
-    /// which wraps this call.
+    /// Normally you would use a logging macro which wraps this call,
+    /// which would be provided by an external crate such as
+    /// `stakker_log`.
+    ///
+    /// This call does nothing unless the **logger** feature is
+    /// enabled.
+    ///
+    /// [`LogRecord`]: struct.LogRecord.html
     #[inline]
     #[allow(unused_variables)]
     pub fn log(
@@ -780,29 +821,33 @@ impl Core {
         false
     }
 
-    /// Allocate a new logging-ID and write an `Open` record to the
-    /// logger.  `tag` will be included as the record's text, and
-    /// should indicate what kind of span it is, e.g. the type name
-    /// for an actor.  This should be the tag for the record, and
-    /// would not normally contain any dynamic information.  If
-    /// `parent_id` is non-zero, then a `parent` key will be added
-    /// with that value.  `kvscan` will be called to add any other
-    /// key-value pairs as required, which is where the dynamic
-    /// information should go.
+    /// Allocate a new logging-ID and write a [`LogLevel::Open`]
+    /// record to the logger.  `tag` will be included as the record's
+    /// text, and should indicate what kind of span it is, e.g. the
+    /// type name for an actor.  The tag would not normally contain
+    /// any dynamic information.  If `parent_id` is non-zero, then a
+    /// `parent` key will be added with that value.  `kvscan` will be
+    /// called to add any other key-value pairs as required, which is
+    /// where the dynamic information should go.
     ///
     /// This is used by actors on startup to allocate a logging-ID for
     /// the span of the actor's lifetime.  However other code that
     /// needs to do logging within a certain identifiable span can
-    /// also make use of this call.  Where possible, relate this new
-    /// span to another span using `parent_id`.  Use
-    /// [`Core::log_span_close`] when the span is complete.
+    /// also make use of this call.  The new span should be related to
+    /// another span using `parent_id` (if possible), and
+    /// [`Core::log_span_close`] should be called when the span is
+    /// complete.
     ///
     /// In the unlikely event that a program allocates 2^64 logging
     /// IDs, the IDs will wrap around to 1 again.  If this is likely
     /// to cause a problem downstream, the logger implementation
     /// should detect this and warn or terminate as appropriate.
     ///
+    /// This call does nothing unless the **logger** feature is
+    /// enabled.
+    ///
     /// [`Core::log_span_close`]: struct.Core.html#method.log_span_close
+    /// [`LogLevel::Open`]: enum.LogLevel.html#variant.Open
     #[inline]
     #[allow(unused_variables)]
     pub fn log_span_open(
@@ -833,11 +878,15 @@ impl Core {
         0
     }
 
-    /// Write a `Close` record to the logger
+    /// Write a [`LogLevel::Close`] record to the logger.  `fmt` is a
+    /// message which may give more information, e.g. the error
+    /// message in the case of a failure.  `kvscan` will be called to
+    /// add key-value pairs to the record.
     ///
-    /// `fmt` is a message which may give more information, e.g. the
-    /// error message in the case of a failure.  `kvscan` will be
-    /// called to add key-value pairs to the record.
+    /// This call does nothing unless the **logger** feature is
+    /// enabled.
+    ///
+    /// [`LogLevel::Close`]: enum.LogLevel.html#variant.Close
     #[inline]
     #[allow(unused_variables)]
     pub fn log_span_close(
@@ -866,8 +915,10 @@ impl Core {
         &self.deferrer
     }
 
-    /// Used in macros to get the LogID in case this is an actor.
-    /// Since it isn't, this call returns 0.
+    /// Used in macros to get the [`LogID`] in case this is an actor
+    /// or context.  Since it isn't, this call returns 0.
+    ///
+    /// [`LogID`]: type.LogID.html
     #[inline]
     pub fn access_log_id(&self) -> LogID {
         0

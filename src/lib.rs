@@ -57,13 +57,14 @@
 //! [`Stakker`] is the external interface to the runtime, i.e. how it
 //! is managed from the event loop, or during startup.
 //!
-//! [`Core`] is the part of the [`Stakker`] API which is also
-//! accessible to the actors during actor calls.  Both [`Stakker`] and
-//! [`Cx`] dereference to [`Core`] and can be used wherever a [`Core`]
-//! ref is required.
+//! [`Cx`] is the context passed to all actor methods.  It gives
+//! access to methods related to the actor being called.  It also
+//! gives access to [`Core`].
 //!
-//! [`Cx`] is the context passed to an actor entry-point.  It gives
-//! access to methods related to the actor being called.
+//! [`Core`] is the part of [`Stakker`] which is accessible to actors
+//! during actor calls via [`Cx`].  Both [`Stakker`] and [`Cx`]
+//! references dereference to [`Core`] and can be used wherever a
+//! [`Core`] ref is required.
 //!
 //! [`Share`] allows a mutable structure to be shared safely between
 //! actors, a bit like IPC shared-memory but with guaranteed exclusive
@@ -159,7 +160,7 @@
 //! care about whether a feature is enabled or not, it should avoid
 //! setting it and leave it up to the application to choose.
 //!
-//! Enabled by default:
+//! Features enabled by default:
 //!
 //! - **anymap**: Brings in the `anymap` crate.  When enabled,
 //! [`Stakker`] keeps an `AnyMap` which can be used to store and
@@ -193,7 +194,7 @@
 //!
 //! - **logger**: Enables **Stakker**'s core logging feature, which
 //! logs actor startup and termination, and which allows macros from
-//! the **stakker_log** crate to log with actor context information.
+//! the `stakker_log` crate to log with actor context information.
 //! See [`Stakker::set_logger`].
 //!
 //! Testing features:

@@ -49,6 +49,13 @@ impl<A: 'static> ActorOwn<A> {
         Self { actor }
     }
 
+    /// Create an additional owning reference to this actor.  When the
+    /// last owning reference is dropped, the actor is terminated,
+    /// even when there are other references active.
+    pub fn owned(&self) -> ActorOwn<A> {
+        ActorOwn::construct(self.actor.clone())
+    }
+
     /// Kill actor, moving to **Zombie** state and dropping the
     /// contained actor `Self` value.  The actor can never return from
     /// the **Zombie** state.  The provided error is used to generate
@@ -191,18 +198,18 @@ impl ActorOwnAnon {
 /// # Example implementation of an minimal actor
 ///
 /// ```
-///# use stakker::{call, Cx, Ret, ret};
+///# use stakker::{call, Cx, CX, Ret, ret};
 /// struct Light {
 ///     on: bool,
 /// }
 /// impl Light {
-///     pub fn init(_cx: &mut Cx<'_, Self>, on: bool) -> Option<Self> {
+///     pub fn init(_cx: CX![], on: bool) -> Option<Self> {
 ///         Some(Self { on })
 ///     }
-///     pub fn set(&mut self, _cx: &mut Cx<'_, Self>, on: bool) {
+///     pub fn set(&mut self, _cx: CX![], on: bool) {
 ///         self.on = on;
 ///     }
-///     pub fn get(&self, cx: &mut Cx<'_, Self>, ret: Ret<bool>) {
+///     pub fn get(&self, cx: CX![], ret: Ret<bool>) {
 ///         ret!([ret], self.on);
 ///     }
 /// }
@@ -228,22 +235,23 @@ impl ActorOwnAnon {
 /// **Prep** state are calls to static methods with the signature `fn
 /// method(cx: CX![], ...) -> Option<Self>`.
 ///
-/// A call should be made to one of the static methods on the actor to
-/// start the process of initialising it.  Initialisation may be
-/// immediate, or it may start an asynchronous process (for example,
-/// making a connection to a remote server).  Each call to a static
-/// method may schedule callbacks to other static methods.
-/// Eventually, one of these methods should fail the actor, or else
-/// return `Some(value)`.
+/// An actor call should be made to one of the static methods on the
+/// actor to start the process of initialising it.  Initialisation may
+/// be immediate, or it may start an asynchronous process (for
+/// example, making a connection to a remote server).  Each call to a
+/// static method may schedule callbacks to other static methods.
+/// Eventually, one of these methods should either return
+/// `Some(value)` or else fail the actor.
 ///
-/// **"Ready" state**: As soon as a value is returned, this is
-/// installed as the actor's `self` value, and the actor moves to the
-/// **Ready** state.  Any calls to the actor that were queued up
-/// whilst it was in the **Prep** state are flushed and executed at
-/// this point.  Whilst in the **Ready** state, the actor can only
-/// execute calls to methods with the signature `fn method(&mut self,
-/// cx: CX![], ...)`, or the same with `&self`.  Any **Prep**-style
-/// calls will be dropped.  Now deferred calls from timers or other
+/// **"Ready" state**: As soon as a `Self` value is returned from a
+/// **Prep** method, this is installed as the actor's `self` value,
+/// and the actor moves to the **Ready** state.  Any calls to the
+/// actor that were queued up whilst it was in the **Prep** state are
+/// flushed and executed at this point.  Whilst in the **Ready**
+/// state, the actor can only execute calls to methods with the
+/// signatures `fn method(&mut self, cx: CX![], ...)` or `fn
+/// method(&self, cx: CX![], ...)`.  Any **Prep**-style calls that
+/// occur will be dropped.  Now deferred calls from timers or other
 /// actors will execute immediately on reaching the front of the
 /// queue.  This is the normal operating mode of the actor.
 ///
@@ -253,11 +261,10 @@ impl ActorOwnAnon {
 /// actor through the [`Cx::fail`], [`Cx::fail_str`] or
 /// [`Cx::fail_string`] methods.  The third is through being killed
 /// externally through the [`ActorOwn::kill`], [`ActorOwn::kill_str`]
-/// or [`ActorOwn::kill_string`] methods.  Termination of the actor is
-/// notified to the [`StopCause`] handler provided to the
-/// [`ActorOwn::new`] method when the actor was created.  (If the last
-/// reference to the actor is dropped, the actor will be terminated
-/// without entering the **Zombie** state.)
+/// or [`ActorOwn::kill_string`] methods.  The fourth is through the
+/// last owning reference to the actor being dropped.  Termination of
+/// the actor is notified to the [`StopCause`] handler provided to the
+/// [`ActorOwn::new`] method when the actor was created.
 ///
 /// Once an actor is a **Zombie** it never leaves that state.  The
 /// `self` value is dropped and all resources are released.
@@ -279,19 +286,27 @@ impl ActorOwnAnon {
 /// references are dropped.
 ///
 /// The normal approach is to use [`ActorOwn`] references to control
-/// the termination of the actor.  If the coder ensures that there are
-/// no cycles in the [`ActorOwn`] graph (e.g. it is a simple tree),
-/// then cleanup is safe and straightforward even in the presence of
-/// [`Actor`], [`Fwd`] or [`Ret`] reference cycles.
+/// the termination of the actor.  If the actor relationships are
+/// designed such that there can be no cycles in the [`ActorOwn`]
+/// graph (e.g. it will always be a simple tree), then cleanup is safe
+/// and straightforward even in the presence of [`Actor`], [`Fwd`] or
+/// [`Ret`] reference cycles.  Everything will be cleaned up correctly
+/// by simply dropping things when they are no longer required.  This
+/// means that when an actor fails with [`fail!`], all of its child
+/// actors will automatically be terminated too.
 ///
-/// This also handles the case where many actors reference a common
-/// actor so long as there are no [`ActorOwn`] back-references.  The
-/// common actor will only be terminated when the last [`ActorOwn`]
-/// reference is dropped.
+/// This also handles the case where many actors hold owning
+/// references to a common shared actor.  The common actor will only
+/// be terminated when the last [`ActorOwn`] reference is dropped.
 ///
-/// However if necessary other termination strategies are possible,
-/// since the actor can be terminated externally using the
-/// [`ActorOwn::kill`] call.
+/// However if the situation doesn't fit the "no cyclic owning
+/// references" model (i.e. ownership cannot be represented as a
+/// directed-acyclic-graph), then other termination strategies are
+/// possible, since an actor can be terminated externally using a
+/// [`kill!`] operation.  This would normally be a design decision to
+/// solve some particularly difficult problem, and in this case the
+/// coder must ensure proper cleanup occurs using [`kill!`] instead of
+/// simply relying on drop.
 ///
 /// [`Actor::is_zombie`]: struct.Actor.html#method.is_zombie
 /// [`ActorOwn::kill_str`]: struct.ActorOwn.html#method.kill_str
@@ -307,6 +322,8 @@ impl ActorOwnAnon {
 /// [`Fwd`]: struct.Fwd.html
 /// [`Ret`]: struct.Ret.html
 /// [`StopCause`]: enum.StopCause.html
+/// [`fail!`]: macro.fail.html
+/// [`kill!`]: macro.kill.html
 pub struct Actor<A: 'static> {
     rc: ActorRc<A>,
 }
@@ -330,13 +347,6 @@ pub(crate) struct Prep {
 }
 
 impl<A> Actor<A> {
-    /// Create an additional owning reference to this actor.  When the
-    /// last owning reference is dropped, the actor is terminated,
-    /// even when there are other references active.
-    pub fn owned(&self) -> ActorOwn<A> {
-        ActorOwn::construct(self.clone())
-    }
-
     /// Check whether the actor is a zombie.  Note that this call is
     /// less useful than it appears, since the actor may become a
     /// zombie between the time you make this call and whatever
@@ -509,7 +519,7 @@ impl<A> Clone for Actor<A> {
 /// allow the actor receiving this indication to make a decision on
 /// what to do next.
 ///
-/// To trace back exactly what happened, enable the "logger" feature
+/// To trace back exactly what happened, enable the **logger** feature
 /// and record the `Open` and `Close` events.
 pub enum StopCause {
     /// Actor terminated using [`Cx::stop`]
@@ -589,8 +599,8 @@ impl<'a, A> Cx<'a, A> {
     }
 
     /// Borrow the current actor reference temporarily.  If you need a
-    /// longer-lived reference to the actor, then clone the result of
-    /// this call.
+    /// longer-lived reference to the actor, then use
+    /// `cx.this().clone()`.
     #[inline]
     pub fn this(&self) -> &Actor<A> {
         self.this
@@ -608,9 +618,10 @@ impl<'a, A> Cx<'a, A> {
     /// terminated.  Actor state will be dropped, and any further
     /// calls to this actor will be discarded.  The termination status
     /// is passed back to the [`StopCause`] handler provided when the
-    /// actor was created.
+    /// actor was created.  See also the [`stop!`] macro.
     ///
     /// [`StopCause`]: enum.StopCause.html
+    /// [`stop!`]: macro.stop.html
     #[inline]
     pub fn stop(&mut self) {
         self.die = Some(StopCause::Stopped);
@@ -621,9 +632,7 @@ impl<'a, A> Cx<'a, A> {
     /// terminated.  Actor state will be dropped, and any further
     /// calls to this actor will be discarded.  The termination status
     /// is passed back to the [`StopCause`] handler provided when the
-    /// actor was created.
-    ///
-    /// [`fail!`] provides a convenient interface to this method.
+    /// actor was created.  See also the [`fail!`] macro.
     ///
     /// [`StopCause`]: enum.StopCause.html
     /// [`fail!`]: macro.fail.html
@@ -637,9 +646,7 @@ impl<'a, A> Cx<'a, A> {
     /// terminated.  Actor state will be dropped, and any further
     /// calls to this actor will be discarded.  The termination status
     /// is passed back to the [`StopCause`] handler provided when the
-    /// actor was created.
-    ///
-    /// [`fail!`] provides a convenient interface to this method.
+    /// actor was created.  See also the [`fail!`] macro.
     ///
     /// [`StopCause`]: enum.StopCause.html
     /// [`fail!`]: macro.fail.html
@@ -653,9 +660,7 @@ impl<'a, A> Cx<'a, A> {
     /// terminated.  Actor state will be dropped, and any further
     /// calls to this actor will be discarded.  The termination status
     /// is passed back to the [`StopCause`] handler provided when the
-    /// actor was created.
-    ///
-    /// [`fail!`] provides a convenient interface to this method.
+    /// actor was created.  See also the [`fail!`] macro.
     ///
     /// [`StopCause`]: enum.StopCause.html
     /// [`fail!`]: macro.fail.html

@@ -5,19 +5,20 @@ before 0.1.0 is allowed to make breaking changes.
 
 <!-- see keepachangelog.com for format ideas -->
 
-## 0.2.0-beta.1 (2020-11-05)
+## 0.2.0 (2020-11-08)
 
 ### Breaking changes
 
 - `PipedThread::new` argument order changed, to avoid need for
   temporaries when called
+- `Actor::kill`, `Actor::kill_str` and `Actor::owned` moved to
+  `ActorOwn`.  This constrains the power to kill an actor and create
+  new owners to just owners.  Also `kill_str` now only handles
+  `&'static str`, with `kill_string` added for `String`.  If you need
+  to kill an actor using just an `Actor` reference, then the actor
+  needs a method added that calls `fail!`
 - `Cx::fail_str` now only handles `&'static str`.  `Cx::fail_string`
   can be used for `String`.  `fail!` macro now abstracts this.
-- `Actor::kill` and `Actor::kill_str` moved to `ActorOwn`.  This
-  constrains the power to kill an actor to just owners.  Also
-  `kill_str` now only handles `&'static str`, with `kill_string` added
-  for `String`.  If you need to kill an actor using just an `Actor`
-  reference, the actor needs a method added that calls `fail!`
 - `ActorOwn::new` now requires a parent-ID argument.  `actor!` and
   `actor_new!` macros are unchanged.
 - `StopCause` adds `StopCause::Lost` to allow for future
@@ -34,7 +35,7 @@ before 0.1.0 is allowed to make breaking changes.
   or forward to the logging system of the host event loop as required
 - `fail!`, `stop!` and `kill!` to express actor termination more
   conveniently, including with formatted strings
-- `ret_fail!` and `ret_failthru!` to cascade actor failure
+- `ret_fail!` and `ret_failthru!` to easily cascade actor failure
 
 ### Changed
 

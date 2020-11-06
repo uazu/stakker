@@ -4,7 +4,10 @@ use static_assertions::assert_eq_size;
 // TODO: Consider `Ret` with built-in timeout that returns None if a
 // response is not generated within a certain time.  This would be
 // used for connections to unreliable components, e.g. ones over TCP
-// links etc.
+// links etc.  However, if we have support for remote actors, then
+// timeouts would be handled at a higher level, i.e. a whole remote
+// host would be considered "Lost" and all references to it would
+// becomes "dead".  So a timeout just for `Ret` is not necessary.
 
 /// Returner for messages of type `M`
 ///
