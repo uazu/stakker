@@ -4,11 +4,13 @@
 [![github:uazu/stakker][2]](https://github.com/uazu/stakker)
 [![crates.io:stakker][3]](https://crates.io/crates/stakker)
 [![docs.rs:stakker][4]](https://docs.rs/stakker)
+[![uazu.github.io:stakker][5]](https://uazu.github.io/stakker/)
 
 [1]: https://img.shields.io/badge/license-MIT%2FApache--2.0-blue
 [2]: https://img.shields.io/badge/github-uazu%2Fstakker-brightgreen
 [3]: https://img.shields.io/badge/crates.io-stakker-red
 [4]: https://img.shields.io/badge/docs.rs-stakker-purple
+[5]: https://img.shields.io/badge/uazu.github.io-stakker-yellow
 
 **Stakker** is designed to be layered on top of whatever event loop
 the user prefers to use.  It aims to take maximum advantage of Rust's
@@ -16,7 +18,8 @@ compile-time checks and optimisations.
 
 ### Documentation
 
-See the [crate documentation](http://docs.rs/stakker).
+See the [crate documentation](http://docs.rs/stakker) and the [Stakker
+Guide and Design Notes](https://uazu.github.io/stakker/)
 
 # License
 

@@ -1,12 +1,14 @@
 //! [![license:MIT/Apache-2.0][1]](https://github.com/uazu/stakker)&nbsp;
 //! [![github:uazu/stakker][2]](https://github.com/uazu/stakker)&nbsp;
 //! [![crates.io:stakker][3]](https://crates.io/crates/stakker)&nbsp;
-//! [![docs.rs:stakker][4]](https://docs.rs/stakker)
+//! [![docs.rs:stakker][4]](https://docs.rs/stakker)&nbsp;
+//! [![uazu.github.io:stakker][5]](https://uazu.github.io/stakker/)
 //!
 //! [1]: https://img.shields.io/badge/license-MIT%2FApache--2.0-blue
 //! [2]: https://img.shields.io/badge/github-uazu%2Fstakker-brightgreen
 //! [3]: https://img.shields.io/badge/crates.io-stakker-red
 //! [4]: https://img.shields.io/badge/docs.rs-stakker-purple
+//! [5]: https://img.shields.io/badge/uazu.github.io-stakker-yellow
 //!
 //! **Stakker** is a lightweight low-level single-threaded actor
 //! runtime.  It is designed to be layered on top of whatever event
@@ -33,6 +35,10 @@
 //! - [Tutorial example](#tutorial-example)
 //! - [Main loop examples](#main-loop-examples)
 //! - [Why the name **Stakker**?](#why-the-name-stakker)
+//!
+//! See the [Stakker Guide and Design
+//! Notes](https://uazu.github.io/stakker/) for additional
+//! documentation.
 //!
 //!
 //! # Overview of types
