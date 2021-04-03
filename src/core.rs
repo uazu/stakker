@@ -327,7 +327,7 @@ impl Drop for Stakker {
 /// [`Stakker`]: struct.Stakker.html
 pub struct Core {
     now: Instant,
-    deferrer: Deferrer,
+    pub(crate) deferrer: Deferrer,
     lazy_queue: FnOnceQueue<Stakker>,
     idle_queue: VecDeque<Box<dyn FnOnce(&mut Stakker) + 'static>>,
     timers: Timers<Stakker>,

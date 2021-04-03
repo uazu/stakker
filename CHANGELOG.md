@@ -5,6 +5,12 @@ before 0.1.0 is allowed to make breaking changes.
 
 <!-- see keepachangelog.com for format ideas -->
 
+## 0.2.2 (2021-04-06)
+
+### Added
+
+- Minimum support for asynchronous tasks, in `task` module
+
 ## 0.2.1 (2021-02-25)
 
 (only documentation changes)

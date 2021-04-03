@@ -1,6 +1,6 @@
 use super::DeferrerAux;
 use crate::queue::FnOnceQueue;
-use crate::Stakker;
+use crate::{task::Task, Stakker};
 
 /// Defer queue which can be accessed without a [`Core`] ref
 ///
@@ -57,6 +57,12 @@ impl Deferrer {
     #[inline]
     pub fn defer(&self, f: impl FnOnce(&mut Stakker) + 'static) {
         self.0.defer(f);
+    }
+
+    /// Replace the current task, returning the old value.
+    #[inline]
+    pub(crate) fn task_replace(&self, task: Option<Task>) -> Option<Task> {
+        self.0.task_replace(task)
     }
 }
 
