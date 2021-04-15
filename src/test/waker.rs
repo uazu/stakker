@@ -23,7 +23,10 @@ use std::time::Instant;
 // a pseudo-random generator with a fixed seed to drive the test, and
 // then check the output to see that this exercises things
 // sufficiently.
+//
+// MIRI takes 4GB+ and much too long to run this test, so skip.
 #[test]
+#[cfg_attr(miri, ignore)]
 fn waker_test() {
     let now = Instant::now();
     let mut stakker = Stakker::new(now);
@@ -69,7 +72,7 @@ fn waker_test() {
     struct IdAndWaker {
         id: u32,
         waker: Waker,
-    };
+    }
     impl std::fmt::Debug for IdAndWaker {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             write!(f, "{}", self.id)

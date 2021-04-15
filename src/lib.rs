@@ -482,6 +482,8 @@
 #![deny(rust_2018_idioms)]
 // No unsafe code is allowed anywhere if no-unsafe is set
 #![cfg_attr(feature = "no-unsafe", forbid(unsafe_code))]
+// To fix these would break the API
+#![allow(clippy::upper_case_acronyms)]
 
 // TODO: Illustrate Fwd in the tutorial example, e.g. make println!
 // output go via a Fwd

@@ -5,6 +5,15 @@ before 0.1.0 is allowed to make breaking changes.
 
 <!-- see keepachangelog.com for format ideas -->
 
+## 0.2.3 (2021-04-22)
+
+### Fixed
+
+- On actor `stop!` or `fail!`, if further failures are reported before
+  the actor method returns, the first stop/fail is now kept and later
+  ones are discarded, since the first failure is closer to the origin
+  of the problem.
+
 ## 0.2.2 (2021-04-06)
 
 ### Added

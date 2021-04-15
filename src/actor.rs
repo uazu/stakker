@@ -624,7 +624,9 @@ impl<'a, A> Cx<'a, A> {
     /// [`stop!`]: macro.stop.html
     #[inline]
     pub fn stop(&mut self) {
-        self.die = Some(StopCause::Stopped);
+        if self.die.is_none() {
+            self.die = Some(StopCause::Stopped);
+        }
     }
 
     /// Indicate failure of the actor.  As soon as the
@@ -638,7 +640,9 @@ impl<'a, A> Cx<'a, A> {
     /// [`fail!`]: macro.fail.html
     #[inline]
     pub fn fail(&mut self, e: impl Error + 'static) {
-        self.die = Some(StopCause::Failed(Box::new(e)));
+        if self.die.is_none() {
+            self.die = Some(StopCause::Failed(Box::new(e)));
+        }
     }
 
     /// Indicate failure of the actor.  As soon as the
@@ -652,7 +656,9 @@ impl<'a, A> Cx<'a, A> {
     /// [`fail!`]: macro.fail.html
     #[inline]
     pub fn fail_str(&mut self, e: &'static str) {
-        self.die = Some(StopCause::Failed(Box::new(StrError(e))));
+        if self.die.is_none() {
+            self.die = Some(StopCause::Failed(Box::new(StrError(e))));
+        }
     }
 
     /// Indicate failure of the actor.  As soon as the
@@ -666,7 +672,9 @@ impl<'a, A> Cx<'a, A> {
     /// [`fail!`]: macro.fail.html
     #[inline]
     pub fn fail_string(&mut self, e: impl Into<String>) {
-        self.die = Some(StopCause::Failed(Box::new(StringError(e.into()))));
+        if self.die.is_none() {
+            self.die = Some(StopCause::Failed(Box::new(StringError(e.into()))));
+        }
     }
 
     /// Used in macros to get an [`Actor`] reference
