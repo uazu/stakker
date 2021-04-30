@@ -22,7 +22,7 @@ impl<A: 'static> ActorOwn<A> {
     /// Create a new uninitialised actor of the given type.  This is
     /// in the **Prep** state.  The reference can be cloned and passed
     /// around and used to create [`Fwd`] or [`Ret`] instances.
-    /// However all calls to be actor will be delayed until the actor
+    /// However all calls to the actor will be delayed until the actor
     /// moves into the **Ready** state.
     ///
     /// `notify` is the [`StopCause`] return, which is called when the
