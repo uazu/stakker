@@ -1,7 +1,7 @@
 //! # Inter-thread waking
 //!
 //! This converts the single `PollWaker` that we get from the I/O
-//! poller into many thousands, arranged in a heirarchical bitmap to
+//! poller into many thousands, arranged in a hierarchical bitmap to
 //! minimise lookups.  A bitmap is used so that some code wishing to
 //! wake up its handler in the **Stakker** thread doesn't need to
 //! remember whether it already has a wake-up request outstanding.
@@ -259,12 +259,12 @@ impl Waker {
     /// worst case it requires 3 atomic operations, and a wake-up call
     /// to the I/O poller.
     ///
-    /// This is handled using a heirarchical tree of `usize` bitmaps
+    /// This is handled using a hierarchical tree of `usize` bitmaps
     /// containing wake bits, one leaf wake bit for each [`Waker`].
     /// At the top of the tree is the poll-waker.  The wake-up only
     /// needs to ascend until it reaches a level which has already
     /// been woken.  In the main thread, in response to the poll-wake
-    /// the heirarchy is descended only on those branches where there
+    /// the hierarchy is descended only on those branches where there
     /// are wake bits set.  The wake bits are cleared and the
     /// corresponding wake handlers are called.  The longer the
     /// poll-wake process takes, the more wakes will be accumulated in
@@ -304,8 +304,8 @@ const USIZE_BITS: u32 = 8 * USIZE_BYTES; // 32 or 64
 const USIZE_INDEX_BITS: u32 = 3 + LOG2_TABLE[USIZE_BYTES as usize]; // 5 or 6
 
 // Regarding Ordering::SeqCst, there are two BitMap operations: `set`
-// sets the bit at the bottom of the heirarchy and works up, and
-// `drain` clears the bits at the top of the heirarchy and works down.
+// sets the bit at the bottom of the hierarchy and works up, and
+// `drain` clears the bits at the top of the hierarchy and works down.
 // If these operations occur at the same time, they must cross over in
 // an ordered way, hence SeqCst.  If they do occur at the same time we
 // get a spurious wake, but that is harmless.  If they crossed over in
@@ -334,7 +334,7 @@ impl<I> IndexMut<u32> for Array<I> {
     }
 }
 
-// A leaf in the heirarchy, providing 32/64 bits.  Uses `usize` as
+// A leaf in the hierarchy, providing 32/64 bits.  Uses `usize` as
 // that is probably the memory word size.  Also `AtomicUsize` is
 // reported to have best platform support.
 #[derive(Default)]
@@ -364,11 +364,11 @@ struct Layer<S: Default> {
     child: Array<S>,
 }
 
-// Code to produce a heirarchy of three levels is a trivial adaption
+// Code to produce a hierarchy of three levels is a trivial adaption
 // of this code (i.e. Layer<Layer<Leaf>>), but I don't think it's
 // needed.
 
-// This bitmap is a heirarchy of two levels.  This holds 2^10 or 2^12
+// This bitmap is a hierarchy of two levels.  This holds 2^10 or 2^12
 // bits (1024 or 4096), taking up 132 or 520 bytes of memory (plus
 // overheads).
 struct BitMap {
