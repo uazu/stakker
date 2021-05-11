@@ -81,7 +81,6 @@ kcov --merge kcov/out kcov/out-*
 # there is no executable code in it.
 ( find src -name "*.rs" |
       fgrep -v test |
-      fgrep -v src/lib.rs |
       perl -pe 's|.*/||';
   echo macro_coverage.rs;  # Always include this
 ) | sort >kcov/list-source

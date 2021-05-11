@@ -1,6 +1,6 @@
 use crate::actor::StringError;
 use crate::*;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 #[test]
 fn actor_termination() {
@@ -71,6 +71,9 @@ fn actor_termination() {
         }
         fn query(&mut self, _cx: CX![]) -> u32 {
             12345
+        }
+        fn query2(&mut self, _cx: CX![], a: u32, b: u32) -> u32 {
+            12345 + a * 5 + b
         }
     }
 
@@ -170,12 +173,14 @@ fn actor_termination() {
     // Test fail in query
     let g = actor!(s, Test::init(), ret_shutdown!(s));
     assert_eq!(g.query(s, |this, cx| this.query(cx)), None); // Not running yet
+    assert_eq!(query!([g, s], query2(1, 2)), None); // Not running yet
     s.run(now, false);
     assert!(matches!(s.shutdown_reason(), None));
-    assert_eq!(g.query(s, |this, cx| this.query(cx)), Some(12345)); // Running
+    assert_eq!(g.query(s, |this, cx| this.query2(cx, 1, 2)), Some(12352)); // Running
+    assert_eq!(query!([g, s], query()), Some(12345)); // Running
     s.run(now, false);
     assert!(matches!(s.shutdown_reason(), None));
-    assert_eq!(g.query(s, |this, cx| this.do_stop_1(cx)), Some(()));
+    assert_eq!(query!([g, s], do_stop_1()), Some(()));
     s.run(now, false);
     assert!(matches!(s.shutdown_reason(), Some(StopCause::Stopped)));
 }
@@ -337,4 +342,95 @@ fn cascade_failure() {
     expect_fail!([A::init5()]; fail_b(); "Test fail 5");
     expect_okay!([A::init5()]; drop_b());
     expect_okay!([A::init5()]; kill_b());
+}
+
+#[test]
+fn actor_in_slab() {
+    struct Child;
+    impl Child {
+        fn init_to_stop(cx: CX![], wait: Duration) -> Option<Self> {
+            after!(wait, [cx], |_, cx| stop!(cx));
+            Some(Child)
+        }
+        fn init_to_fail(cx: CX![], wait: Duration) -> Option<Self> {
+            after!(wait, [cx], |_, cx| fail!(cx, "Timeout"));
+            Some(Child)
+        }
+    }
+    struct Parent {
+        children: ActorOwnSlab<Child>,
+        fail_count: usize,
+        stop_count: usize,
+        counts: Vec<usize>,
+    }
+    impl Parent {
+        fn init(_: CX![]) -> Option<Self> {
+            Some(Self {
+                children: ActorOwnSlab::new(),
+                fail_count: 0,
+                stop_count: 0,
+                counts: Vec::new(),
+            })
+        }
+        fn add_child_1(&mut self, cx: CX![], dur: Duration) {
+            actor_in_slab!(self.children, cx, Child::init_to_stop(dur));
+            self.counts.push(self.children.len());
+        }
+        fn add_child_2(&mut self, cx: CX![], dur: Duration) {
+            actor_in_slab!(self.children, cx, <Child>::init_to_fail(dur));
+            self.counts.push(self.children.len());
+        }
+        fn add_child_3(&mut self, cx: CX![], dur: Duration) {
+            actor_in_slab!(
+                self.children,
+                cx,
+                Child::init_to_stop(dur),
+                ret_some_to!([cx], handle_cause() as (StopCause))
+            );
+            self.counts.push(self.children.len());
+        }
+        fn add_child_4(&mut self, cx: CX![], dur: Duration) {
+            actor_in_slab!(
+                self.children,
+                cx,
+                <Child>::init_to_fail(dur),
+                ret_some_to!([cx], handle_cause() as (StopCause))
+            );
+            self.counts.push(self.children.len());
+        }
+        fn handle_cause(&mut self, _: CX![], cause: StopCause) {
+            // This is only called for two of the tests
+            self.counts.push(self.children.len());
+            match cause {
+                StopCause::Stopped => self.stop_count += 1,
+                StopCause::Failed(_) => self.fail_count += 1,
+                _ => (),
+            }
+        }
+        fn checks(&mut self, cx: CX![]) {
+            assert_eq!(self.counts, vec![1, 2, 2, 3, 1, 0]);
+            assert_eq!(self.stop_count, 1);
+            assert_eq!(self.fail_count, 1);
+            assert!(self.children.is_empty());
+            stop!(cx);
+        }
+    }
+
+    let mut now = Instant::now();
+    let mut stakker = Stakker::new(now);
+    let s = &mut stakker;
+
+    let parent = actor!(s, Parent::init(), ret_shutdown!(s));
+    const SEC: Duration = Duration::from_secs(1);
+    call!([parent], add_child_1(1 * SEC)); // Spans 0-1s
+    call!([parent], add_child_2(4 * SEC)); // Spans 0-4s
+    after!(2 * SEC, [parent, s], add_child_3(5 * SEC)); // Spans 2-7s
+    after!(3 * SEC, [parent, s], add_child_4(2 * SEC)); // Spans 3-5s
+    after!(60 * SEC, [parent, s], checks());
+
+    s.run(now, false);
+    while s.not_shutdown() {
+        now += s.next_wait_max(now, 60 * SEC, false);
+        s.run(now, false);
+    }
 }

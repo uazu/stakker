@@ -490,14 +490,19 @@
 
 pub use crate::core::{Core, Stakker};
 pub use crate::log::{LogFilter, LogID, LogLevel, LogLevelError, LogRecord, LogVisitor};
-pub use actor::{Actor, ActorOwn, ActorOwnAnon, Cx, StopCause};
+pub use actor::{Actor, ActorOwn, ActorOwnAnon, ActorOwnSlab, Cx, StopCause};
 pub use deferrer::Deferrer;
 pub use fwd::Fwd;
 pub use ret::Ret;
-pub use share::Share;
+pub use share::{Share, ShareWeak};
 pub use thread::{PipedLink, PipedThread};
 pub use timers::{FixedTimerKey, MaxTimerKey, MinTimerKey};
 pub use waker::Waker;
+
+/// Auxiliary types that are not interesting in themselves
+pub mod aux {
+    pub use crate::actor::ActorOwnSlabIter;
+}
 
 // Trait checks
 static_assertions::assert_not_impl_any!(Stakker: Send, Sync, Copy, Clone);

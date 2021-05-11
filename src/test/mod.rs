@@ -1,11 +1,14 @@
 mod actor;
+mod core;
 mod extra;
 mod log;
-mod macro_coverage;
 mod macros;
 mod memsizes;
 mod queue_corpus;
 mod share;
+mod task;
 mod thread;
 mod timers_corpus;
 mod waker;
+
+pub(crate) mod macro_coverage;

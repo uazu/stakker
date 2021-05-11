@@ -21,8 +21,8 @@ maintenance = { status = "actively-developed" }
 [dependencies]
 static_assertions = "1.0"
 qcell = "0.4"
+slab = "0.4"
 anymap = { version = "0.12", optional = true }
-slab = { version = "0.4", optional = true }
 
 # For more details on features, see crate docs.  Features are additive
 # in cargo, so summing features must result a less restrictive, more
@@ -48,7 +48,7 @@ multi-stakker = []
 inline-deferrer = []
 
 # Enable inter-thread operations: Waker, PipedThread
-inter-thread = ["slab"]
+inter-thread = []
 
 # Enable core logger support (Stakker::set_logger())
 logger = []

@@ -277,6 +277,96 @@ macro_rules! actor_of_trait {
     }};
 }
 
+/// Create a new actor in an [`ActorOwnSlab`]
+///
+/// The new actor is created and its [`ActorOwn`] reference is stored
+/// in the provided [`ActorOwnSlab`].  The termination notification
+/// handler is set up to remove the reference from the slab when the
+/// actor terminates.  So this takes care of all the child actor
+/// housekeeping for simple cases.  See [`ActorOwnSlab`] for notes on
+/// more complicated cases.
+///
+/// So assuming `self.children` is your [`ActorOwnSlab`] instance, the
+/// call will take one of these forms:
+///
+/// ```ignore
+/// let actor = actor_in_slab!(self.children, cx, Type::init(args...));
+/// let actor = actor_in_slab!(self.children, cx, <path::Type>::init(args...));
+/// ```
+///
+/// If you need to monitor failures, then add a `Ret<StopCause>`
+/// instance to the end of the macro arguments.  For example:
+///
+/// ```ignore
+/// let actor = actor_in_slab!(
+///     self.children, cx, <path::Type>::init(args...),
+///     ret_some_to!([cx], |this, cx, cause: StopCause| {
+///         ...error handling...
+///     }));
+/// ```
+///
+/// [`ActorOwnSlab`]: struct.ActorOwnSlab.html
+/// [`ActorOwn`]: struct.ActorOwn.html
+/// [`StopCause`]: enum.StopCause.html
+//
+/// Implemented using [`ActorOwnSlab::add`].
+///
+/// [`ActorOwnSlab::add`]: struct.ActorOwnSlab.html#method.add
+#[macro_export]
+macro_rules! actor_in_slab {
+    ($self:ident.$children:ident, $cx:expr, $type:ident :: $init:ident($($x:expr),* $(,)? )) => {{
+        $crate::COVERAGE!(actor_in_slab_0);
+        $crate::actor_in_slab!($self.$children, $cx, <$type>::$init($($x),*), $crate::Ret::new(|_| {}))
+    }};
+    ($self:ident.$children:ident, $cx:expr, <$type:ty> :: $init:ident($($x:expr),* $(,)? )) => {{
+        $crate::COVERAGE!(actor_in_slab_1);
+        $crate::actor_in_slab!($self.$children, $cx, <$type>::$init($($x),*), $crate::Ret::new(|_| {}))
+    }};
+    ($self:ident.$children:ident, $cx:expr, $type:ident :: $init:ident($($x:expr),* $(,)? ), $notify:expr) => {{
+        $crate::COVERAGE!(actor_in_slab_2);
+        $crate::actor_in_slab!($self.$children, $cx, <$type>::$init($($x),*), $notify)
+    }};
+    ($self:ident.$children:ident, $cx:expr, <$type:ty> :: $init:ident($($x:expr),* $(,)? ), $notify:expr) => {{
+        $crate::COVERAGE!(actor_in_slab_3);
+        let notify = $notify;
+        let parent = $cx.this().clone();
+        let core = $cx.access_core();
+        let actor = $self.$children.add(core, parent, |this| &mut this.$children, notify);
+        $crate::call!([actor], <$type>::$init($($x),*));
+        actor
+    }};
+}
+
+/// Synchronously query an actor for information
+///
+/// This requires a `&mut Stakker` and is intended for interfacing the
+/// actor system to external code.  It makes a synchronous call to an
+/// actor method, and the actor method may return data from its own
+/// state.  However if the actor is not yet in the *Ready* state, or
+/// has terminated, then `None` will be returned.  No attempt is made
+/// to handle the call asynchronously, e.g. to queue it.  So this is
+/// only intended to aid in interfacing the actor system to non-actor
+/// code.
+///
+/// ```ignore
+/// // Where `s` is a `&mut Stakker`
+/// match query!([actor, s], method(args...)) {
+///     None => ...,          // Actor not in ready state
+///     Some(result) => ...,  // Successful call
+/// }
+/// ```
+///
+/// Implemented using [`Actor::query`].
+///
+/// [`Actor::query`]: struct.Actor.html#method.query
+#[macro_export]
+macro_rules! query {
+    ([$actor:expr, $stakker:expr], $method:ident( $($x:expr),* $(,)? )) => {{
+        $crate::COVERAGE!(query_0);
+        $actor.query($stakker, |this, cx| this.$method(cx, $($x),*))
+    }}
+}
+
 // Common code for `call!` etc
 #[doc(hidden)]
 #[macro_export]
@@ -294,7 +384,7 @@ macro_rules! generic_call {
     ($handler:ident $hargs:tt $access:ident;
      [$core:expr], |$stakker:pat| $body:expr) => {{
          $crate::COVERAGE!(generic_call_1);
-         let core = $core.access_core();  // Expecting Core, Cx or Stakker ref
+         let core = $core.$access();  // Expecting Core, Cx or Stakker ref
          let cb = move |$stakker : &mut $crate::Stakker| $body;
          $crate::$handler!($hargs core; cb);
      }};
@@ -1132,9 +1222,10 @@ macro_rules! ret_do {
 macro_rules! ret_some_do {
     ($cb:expr) => {{
         $crate::COVERAGE!(ret_some_do_0);
+        let cb = $cb;
         $crate::Ret::new(move |m| {
             if let Some(m) = m {
-                ($cb)(m);
+                cb(m);
             }
         })
     }};

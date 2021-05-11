@@ -6,6 +6,11 @@ pub fn actor_1() {}
 pub fn actor_new() {}
 pub fn actor_2() {}
 pub fn actor_3() {}
+pub fn actor_in_slab_0() {}
+pub fn actor_in_slab_1() {}
+pub fn actor_in_slab_2() {}
+pub fn actor_in_slab_3() {}
+pub fn query_0() {}
 pub fn generic_call_0() {}
 pub fn generic_call_1() {}
 pub fn generic_call_2() {}

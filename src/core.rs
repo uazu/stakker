@@ -337,6 +337,7 @@ pub struct Core {
     #[cfg(feature = "anymap")]
     anymap: anymap::Map,
     systime: Option<SystemTime>,
+    start_instant: Instant,
     wake_handlers: WakeHandlers,
     wake_handlers_unset: bool,
     #[cfg(feature = "logger")]
@@ -370,6 +371,7 @@ impl Core {
             #[cfg(feature = "anymap")]
             anymap: anymap::Map::new(),
             systime: None,
+            start_instant: now,
             wake_handlers: WakeHandlers::new(Box::new(|| unreachable!())),
             wake_handlers_unset: true,
             #[cfg(feature = "logger")]
@@ -407,6 +409,13 @@ impl Core {
         } else {
             SystemTime::now()
         }
+    }
+
+    /// Get the `Instant` which was passed to `Stakker::new` when this
+    /// runtime was started.
+    #[inline]
+    pub fn start_instant(&self) -> Instant {
+        self.start_instant
     }
 
     /// Defer an operation to be executed later.  It is put on the

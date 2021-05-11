@@ -1,8 +1,6 @@
 use crate::cell::cell::ShareCell;
 use crate::Core;
-use std::rc::Rc;
-
-// TODO: Use MinRc for Share?  Or will we need weak references someday?
+use std::rc::{Rc, Weak};
 
 /// Ref-counted shared mutable data
 ///
@@ -96,6 +94,28 @@ impl<T> Share<T> {
     pub fn rw<'a>(&'a self, core: &'a mut Core) -> &'a mut T {
         core.sharecell_owner.rw(&self.rc)
     }
+
+    /// Create a [`ShareWeak`] reference to the contained object
+    ///
+    /// [`ShareWeak`]: struct.ShareWeak.html
+    #[inline]
+    pub fn downgrade(&self) -> ShareWeak<T> {
+        ShareWeak {
+            weak: Rc::downgrade(&self.rc),
+        }
+    }
+
+    /// Return the number of strong references to the shared data
+    #[inline]
+    pub fn strong_count(&self) -> usize {
+        Rc::strong_count(&self.rc)
+    }
+
+    /// Return the number of weak references to the shared data
+    #[inline]
+    pub fn weak_count(&self) -> usize {
+        Rc::weak_count(&self.rc)
+    }
 }
 
 impl<T> Clone for Share<T> {
@@ -103,6 +123,49 @@ impl<T> Clone for Share<T> {
     fn clone(&self) -> Self {
         Self {
             rc: self.rc.clone(),
+        }
+    }
+}
+
+/// Weak reference to a [`Share`]
+///
+/// This reference does not stop the [`Share`] from being dropped, but
+/// can be used to recover a [`Share`] reference if it is still alive
+/// due to a strong reference held elsewhere.
+///
+/// [`Share`]: struct.Share.html
+pub struct ShareWeak<T> {
+    weak: Weak<ShareCell<T>>,
+}
+
+impl<T> ShareWeak<T> {
+    /// If there are still strong references to the shared data,
+    /// returns a new [`Share`].  Otherwise the shared data has been
+    /// dropped, and so returns `None`.
+    ///
+    /// [`Share`]: struct.Share.html
+    pub fn upgrade(&self) -> Option<Share<T>> {
+        self.weak.upgrade().map(|rc| Share { rc })
+    }
+
+    /// Return the number of strong references to the shared data
+    pub fn strong_count(&self) -> usize {
+        self.weak.strong_count()
+    }
+
+    /// Return the number of weak references to the shared data,
+    /// including this one, or 0 if there are no strong pointers
+    /// remaining.
+    pub fn weak_count(&self) -> usize {
+        self.weak.weak_count()
+    }
+}
+
+impl<T> Clone for ShareWeak<T> {
+    /// Return another weak reference to the shared data
+    fn clone(&self) -> Self {
+        Self {
+            weak: self.weak.clone(),
         }
     }
 }

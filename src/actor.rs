@@ -1,6 +1,7 @@
 use crate::queue::FnOnceQueue;
 use crate::rc::ActorRc;
-use crate::{Core, Deferrer, LogID, Ret, Stakker};
+use crate::{ret, ret_some_do, Core, Deferrer, LogID, Ret, Stakker};
+use slab::Slab;
 use std::error::Error;
 use std::fmt;
 use std::ops::{Deref, DerefMut};
@@ -724,5 +725,129 @@ impl Error for StringError {}
 impl fmt::Display for StringError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.0)
+    }
+}
+
+/// A set of owning actor references
+///
+/// This type may be convenient when an actor will have many children
+/// of the same type and the parent doesn't need to differentiate
+/// between them, nor access them with a key.  This type keeps track of
+/// them and automatically takes care of removing each child actor
+/// from the set when it terminates.  It also allows iterating through
+/// them in case the parent needs to make a call to all child actors.
+///
+/// The [`actor_in_slab!`] macro provides a wrapper around this to
+/// make its use more readable.
+///
+/// However for more complicated cases, you might want to do all this
+/// in your own code instead of using this type.  For example for the
+/// case where you already have a key that you want to associate with
+/// the child actor, and you want to use that key to get hold of the
+/// actor reference, in that case you need a `HashMap`, not a slab.
+///
+/// Note that this doesn't expose the `usize` slab key.  This is
+/// intentional.  Cases where the slab key would be useful are better
+/// handled in user code, i.e. they would probably need a `HashMap`,
+/// and in that case the [`ActorOwn`] would be better kept in that
+/// `HashMap` instead of in this slab.
+///
+/// [`ActorOwn`]: struct.ActorOwn.html
+/// [`actor_in_slab!`]: macro.actor_in_slab.html
+pub struct ActorOwnSlab<T: 'static> {
+    slab: Slab<ActorOwn<T>>,
+}
+
+impl<T: 'static> ActorOwnSlab<T> {
+    /// Create a new [`ActorOwnSlab`]
+    ///
+    /// [`ActorOwnSlab`]: struct.ActorOwnSlab.html
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Create an actor whose [`ActorOwn`] is stored in the slab, with
+    /// a termination notification handler which automatically removes
+    /// it from this slab when it fails or terminates.  `get_slab`
+    /// would typically be `|this| this.children`, assuming `children`
+    /// is what the [`ActorOwnSlab`] is called in the actor's state.
+    /// The `notify` handler is called as normal with the
+    /// [`StopCause`].
+    ///
+    /// This call does the same as [`actor_new!`], i.e. it creates the
+    /// actor but does not initialise it.  It returns an [`Actor`]
+    /// reference which can be used to initialise the actor.
+    ///
+    /// [`ActorOwnSlab`]: struct.ActorOwnSlab.html
+    /// [`ActorOwn`]: struct.ActorOwn.html
+    /// [`Actor`]: struct.Actor.html
+    /// [`actor_new!`]: macro.actor_new.html
+    #[inline]
+    pub fn add<P>(
+        &mut self,
+        core: &mut Core,
+        parent: Actor<P>,
+        get_slab: impl for<'a> FnOnce(&'a mut P) -> &'a mut Self + 'static,
+        notify: Ret<StopCause>,
+    ) -> Actor<T> {
+        let vacant = self.slab.vacant_entry();
+        let key = vacant.key();
+        let parid = parent.id();
+        let actorown = ActorOwn::new(
+            core,
+            ret_some_do!(move |cause| {
+                let parent2 = parent.clone();
+                parent.defer(move |s| {
+                    parent2.apply(s, move |this, _| {
+                        get_slab(this).slab.remove(key);
+                    });
+                });
+                ret!([notify], cause);
+            }),
+            parid,
+        );
+        let actor = actorown.clone();
+        vacant.insert(actorown);
+        actor
+    }
+
+    /// Returns the number of actors held in the slab
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.slab.len()
+    }
+
+    /// Returns `true` if there are no values left in the slab
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.slab.is_empty()
+    }
+}
+
+impl<T> Default for ActorOwnSlab<T> {
+    fn default() -> Self {
+        Self { slab: Slab::new() }
+    }
+}
+
+impl<'a, T> IntoIterator for &'a ActorOwnSlab<T> {
+    type Item = &'a ActorOwn<T>;
+    type IntoIter = ActorOwnSlabIter<'a, T>;
+
+    fn into_iter(self) -> ActorOwnSlabIter<'a, T> {
+        ActorOwnSlabIter(self.slab.iter())
+    }
+}
+
+/// Iterator over actors in an [`ActorOwnSlab`]
+///
+/// [`ActorOwnSlab`]: struct.ActorOwnSlab.html
+pub struct ActorOwnSlabIter<'a, T: 'static>(slab::Iter<'a, ActorOwn<T>>);
+
+impl<'a, T> Iterator for ActorOwnSlabIter<'a, T> {
+    type Item = &'a ActorOwn<T>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.0.next().map(|item| item.1)
     }
 }
