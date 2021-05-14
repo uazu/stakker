@@ -26,7 +26,7 @@ impl Dog {
 
 // This function doesn't know whether it's getting a cat or a dog,
 // but it can still call it and drop it when it has finished
-pub fn call_and_drop(sound: Fwd<()>, own: ActorOwnAnon) {
+pub fn call_and_drop(sound: Fwd<()>, _own: ActorOwnAnon) {
     fwd!([sound]);
 }
 

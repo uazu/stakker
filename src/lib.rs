@@ -434,12 +434,12 @@
 //!# use stakker::Stakker;
 //!# use std::time::{Duration, Instant};
 //!# struct MioPoll;
-//!# impl MioPoll { fn poll(&self, s: &mut Stakker, d: Duration) -> std::io::Result<bool> { Ok(false) } }
+//!# impl MioPoll { fn poll(&self, d: Duration) -> std::io::Result<bool> { Ok(false) } }
 //!# fn test(stakker: &mut Stakker, miopoll: &mut MioPoll) -> std::io::Result<()> {
 //! let mut idle_pending = stakker.run(Instant::now(), false);
 //! while stakker.not_shutdown() {
 //!     let maxdur = stakker.next_wait_max(Instant::now(), Duration::from_secs(60), idle_pending);
-//!     let activity = miopoll.poll(stakker, maxdur)?;
+//!     let activity = miopoll.poll(maxdur)?;
 //!     idle_pending = stakker.run(Instant::now(), !activity);
 //! }
 //!#     Ok(())

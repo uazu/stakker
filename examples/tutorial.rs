@@ -2,7 +2,7 @@
 //! https://docs.rs/stakker/*/stakker/#tutorial-example
 
 use stakker::*;
-use std::time::{Instant, Duration};
+use std::time::{Duration, Instant};
 
 // An actor is represented as a struct which holds the actor state
 struct Light {
@@ -11,17 +11,16 @@ struct Light {
 }
 
 impl Light {
-    // This is a "Prep" method which is used to create a Self value for the actor.
-    //
-    // `cx` is the actor context and gives access to Stakker `Core`.
-    // (`CX![]` expands to `&mut Cx<'_, Self>`.)
+    // This is a "Prep" method which is used to create a Self value
+    // for the actor.  `cx` is the actor context and gives access to
+    // Stakker `Core`.  (`CX![]` expands to `&mut Cx<'_, Self>`.)
     //
     // A "Prep" method doesn't have to return a Self value right away.
     // For example it might asynchronously attempt a connection to a
     // remote server first before arranging a call to another "Prep"
-    // function which returns the Self value. Once a value is returned,
-    // the actor is "Ready" and any queued-up operations on the actor
-    // will be executed.
+    // function which returns the Self value.  Once a value is
+    // returned, the actor is "Ready" and any queued-up operations on
+    // the actor will be executed.
     pub fn init(cx: CX![]) -> Option<Self> {
         // Use cx.now() instead of Instant::now() to allow execution
         // in virtual time if supported by the environment.
@@ -34,8 +33,12 @@ impl Light {
     pub fn set(&mut self, cx: CX![], on: bool) {
         self.on = on;
         let time = cx.now() - self.start;
-        //println!("{:04}.{:03} Light on: {}", time.as_secs(), time.subsec_millis(), on);
-        println!("secs:{} Light on: {}", time.as_secs(), on);
+        println!(
+            "{:04}.{:03} Light on: {}",
+            time.as_secs(),
+            time.subsec_millis(),
+            on
+        );
     }
 
     // A `Fwd` or `Ret` allows passing data to arbitrary destinations,
@@ -53,11 +56,14 @@ struct Flasher {
 }
 
 impl Flasher {
-    pub fn init(cx: CX![], light: Actor<Light>,
-                interval: Duration, count: usize) -> Option<Self> {
+    pub fn init(cx: CX![], light: Actor<Light>, interval: Duration, count: usize) -> Option<Self> {
         // Defer first switch to the queue
         call!([cx], switch(true));
-        Some(Self { light, interval, count })
+        Some(Self {
+            light,
+            interval,
+            count,
+        })
     }
 
     pub fn switch(&mut self, cx: CX![], on: bool) {
@@ -85,24 +91,20 @@ impl Flasher {
 }
 
 fn main() {
+    // Contains all the queues and timers, and controls access to the
+    // state of all the actors.
+    let mut stakker0 = Stakker::new(Instant::now());
+    let stakker = &mut stakker0;
 
-    // Contains all the queues and timers,
-    // and controls access to the state of all the actors.
-    //
-    // https://docs.rs/stakker/0.2.1/stakker/struct.Stakker.html
-    let mut sk0 = Stakker::new(Instant::now());
-
-    // Create and initialise the Light and Flasher actors.
-    // The Flasher actor is given a reference to the Light.
-    // Use a StopCause handler to shutdown when the Flasher terminates.
-    //
-    // https://docs.rs/stakker/0.2.1/stakker/macro.actor.html
-    let light = actor!(&mut sk0, Light::init(), ret_nop!());
+    // Create and initialise the Light and Flasher actors.  The
+    // Flasher actor is given a reference to the Light.  Use a
+    // StopCause handler to shutdown when the Flasher terminates.
+    let light = actor!(stakker, Light::init(), ret_nop!());
 
     let _flasher = actor!(
-        &mut sk0,
+        stakker,
         Flasher::init(light.clone(), Duration::from_secs(1), 6),
-        ret_shutdown!(&mut sk0) // DEBUG LEARN
+        ret_shutdown!(stakker)
     );
 
     // Since we're not in virtual time, we use `Instant::now()` in
@@ -112,14 +114,14 @@ fn main() {
     // processing get the same `cx.now()` value.  Also note that
     // `Instant::now()` uses a Mutex on some platforms so it saves
     // cycles to call it less often.
-    sk0.run(Instant::now(), false);
-    while sk0.not_shutdown() {
+    stakker.run(Instant::now(), false);
+    while stakker.not_shutdown() {
         // Wait for next timer to expire.  Here there's no I/O polling
         // required to wait for external events, so just `sleep`
-        let maxdur = sk0.next_wait_max(Instant::now(), Duration::from_secs(60), false);
+        let maxdur = stakker.next_wait_max(Instant::now(), Duration::from_secs(60), false);
         std::thread::sleep(maxdur);
 
         // Run queue and timers
-        sk0.run(Instant::now(), false);
+        stakker.run(Instant::now(), false);
     }
 }
