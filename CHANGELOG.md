@@ -5,6 +5,19 @@ before 0.1.0 is allowed to make breaking changes.
 
 <!-- see keepachangelog.com for format ideas -->
 
+## 0.2.4 (2021-05-14)
+
+### Added
+
+- `ActorOwnSlab` / `actor_in_slab!` for basic child actor housekeeping
+- `query!` macro for convenient access to `Actor::query`
+- `Core::start_instant()` to get runtime startup time
+- `ShareWeak` for weak references to `Share` items
+
+### Documentation
+
+- `examples/` folder
+
 ## 0.2.3 (2021-04-22)
 
 ### Fixed
