@@ -96,7 +96,7 @@ impl WakeHandlers {
 
     // Get Waker `drop_list`
     pub fn drop_list(&mut self) -> Vec<u32> {
-        mem::replace(&mut *self.pollwaker.drop_list.lock().unwrap(), Vec::new())
+        mem::take(&mut *self.pollwaker.drop_list.lock().unwrap())
     }
 
     /// Borrows a wake handler from its slot in the slab, leaving a

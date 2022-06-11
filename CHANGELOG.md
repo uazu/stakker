@@ -5,6 +5,10 @@ before 0.1.0 is allowed to make breaking changes.
 
 <!-- see keepachangelog.com for format ideas -->
 
+## 0.2.5 (2022-06-11)
+
+(maintenance)
+
 ## 0.2.4 (2021-05-14)
 
 ### Added

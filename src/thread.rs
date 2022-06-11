@@ -106,7 +106,7 @@ impl<O: Send + Sync + 'static, I: Send + Sync + 'static> PipedThread<O, I> {
         let waker = core.waker(move |_, deleted| {
             let mut panic = None;
             let mut lock = qu.mutex.lock().unwrap();
-            let recv = mem::replace(&mut lock.recv, Vec::new());
+            let recv = mem::take(&mut lock.recv);
             if deleted {
                 panic = mem::replace(&mut lock.panic, None);
             }

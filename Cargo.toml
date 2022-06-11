@@ -1,6 +1,6 @@
 [package]
 name = "stakker"
-version = "0.2.4"
+version = "0.2.5"
 authors = ["Jim Peters <jim@uazu.net>"]
 edition = "2018"
 
@@ -20,7 +20,7 @@ maintenance = { status = "actively-developed" }
 
 [dependencies]
 static_assertions = "1.0"
-qcell = "0.4"
+qcell = "0.5"
 slab = "0.4"
 anymap = { version = "0.12", optional = true }
 
