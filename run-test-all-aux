@@ -1,0 +1,50 @@
+#!/bin/bash
+
+FEATURES="$1"
+
+if [ "$RUST_TEST_THREADS" = "1" ]
+then
+    # Since 1.67 we can't trust RUST_TEST_THREADS to do the right
+    # thing.  It runs multiple threads with a lock to only allow one
+    # to run at a time, which breaks Stakker single-threaded tests.
+    # See: https://github.com/rust-lang/cargo/issues/11896 and
+    # https://github.com/rust-lang/rust/issues/104053
+    echo "*** Applying work-around for broken RUST_TEST_THREADS in 1.67 and above ***"
+    FLAG_FAILED=/tmp/stakker-run-test-all-aux-$$-flag
+    FLAG_TESTED=/tmp/stakker-run-test-all-aux-$$-tested
+    TMPOUT=/tmp/stakker-run-test-all-aux-$$-out
+    rm -f $FLAG_FAILED >&/dev/null
+    rm -f $FLAG_TESTED >&/dev/null
+    cargo test --lib --no-default-features --features "$FEATURES" -- --list 2>/dev/null |
+        grep ': test' |
+        perl -pe 's/: test$//;' |
+        while read xx
+        do
+            if cargo test --lib --no-default-features --features "$FEATURES" -- --exact "$xx" >$TMPOUT 2>&1
+            then
+                grep "test .* [.][.][.]" $TMPOUT || cat $TMPOUT
+            else
+                echo "=== $xx"
+                cat $TMPOUT
+                touch $FLAG_FAILED
+            fi
+            rm $TMPOUT
+            touch $FLAG_TESTED
+        done
+    [ ! -f $FLAG_TESTED ] && {
+        echo "NO TESTS WERE FOUND.  Check run-test-all-aux script.  Maybe output of --list has changed?"
+        rm -f $FLAG_FAILED >&/dev/null
+        exit 1
+    }
+    rm -f $FLAG_TESTED >&/dev/null
+    [ -f $FLAG_FAILED ] && {
+        rm $FLAG_FAILED
+        exit 1
+    }
+    # Doc-tests are run one-per-process and are unaffected
+    cargo test --doc --no-default-features --features "$FEATURES"
+    exit $?
+fi
+
+cargo test --no-default-features --features "$FEATURES"
+exit $?
