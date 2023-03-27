@@ -329,6 +329,7 @@ pub struct Core {
     now: Instant,
     pub(crate) deferrer: Deferrer,
     lazy_queue: FnOnceQueue<Stakker>,
+    #[allow(clippy::type_complexity)]
     idle_queue: VecDeque<Box<dyn FnOnce(&mut Stakker) + 'static>>,
     timers: Timers<Stakker>,
     shutdown: Option<StopCause>,
@@ -345,6 +346,7 @@ pub struct Core {
     #[cfg(feature = "logger")]
     log_filter: LogFilter,
     #[cfg(feature = "logger")]
+    #[allow(clippy::type_complexity)]
     logger: Option<Box<dyn FnMut(&mut Core, &LogRecord<'_>)>>,
 }
 

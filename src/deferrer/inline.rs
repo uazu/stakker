@@ -26,7 +26,13 @@ impl DeferrerAux {
         // Safety: Safe because the methods called within the unsafe
         // region do not do any operations which will attempt to get
         // another mutable reference to the queue
-        unsafe { mem::swap(&mut *self.0.queue.get(), queue) }
+
+        // Clippy false positive: They don't overlap, guaranteed by
+        // `&mut` param outside of `unsafe`
+        #[allow(clippy::swap_ptr_to_ref)]
+        unsafe {
+            mem::swap(&mut *self.0.queue.get(), queue)
+        }
     }
 
     #[inline]
@@ -34,7 +40,7 @@ impl DeferrerAux {
         // Safety: Safe because the methods called within the unsafe
         // region do not do any operations which will attempt to get
         // another mutable reference to the queue
-        unsafe { (&mut *self.0.queue.get()).push(f) };
+        unsafe { (*self.0.queue.get()).push(f) };
     }
 
     #[inline]

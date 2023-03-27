@@ -1,5 +1,6 @@
 /// Queue of `FnOnce(&mut Stakker)` items waiting for execution.
 pub(crate) struct FnOnceQueue<S: 'static> {
+    #[allow(clippy::type_complexity)]
     vec: Vec<Box<dyn FnOnce(&mut S) + 'static>>,
 }
 

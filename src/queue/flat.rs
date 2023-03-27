@@ -54,6 +54,8 @@ fn check_vtable_access() {
     #[inline]
     fn check(mut item: impl CallTrait<u64>) {
         let ctref: &mut dyn CallTrait<u64> = &mut item;
+
+        #[allow(clippy::size_of_ref)]
         if mem::size_of_val(&ctref) != mem::size_of::<FatPointer>() {
             std::mem::forget(item);
             panic!(
@@ -127,7 +129,9 @@ impl<S: 'static> FnOnceQueue<S> {
     fn push_aux(hv: &mut hvec::HVec, value: impl FnOnce(&mut S) + 'static) {
         let mut item = CallItem::new(value);
         let ctref: &mut dyn CallTrait<S> = &mut item;
-        assert_eq!(mem::size_of_val(&ctref), mem::size_of::<FatPointer>());
+        #[allow(clippy::size_of_ref)]
+        let size_of_ctref = mem::size_of_val(&ctref);
+        assert_eq!(size_of_ctref, mem::size_of::<FatPointer>());
         let repr = unsafe { mem::transmute_copy::<&mut dyn CallTrait<S>, FatPointer>(&ctref) };
         hv.push(repr.vtable as *const (), item, Self::expand_storage);
     }
@@ -208,7 +212,7 @@ impl<S: 'static> FnOnceQueue<S> {
     /// empty, but with the same backing memory still allocated to
     /// aid in cache reuse.
     pub fn execute(&mut self, context: &mut S) {
-        self.drain_for_each(|ptr| unsafe { (&mut *ptr).call(context) });
+        self.drain_for_each(|ptr| unsafe { (*ptr).call(context) });
     }
 
     // This call will 'forget' objects (i.e. not drop them) unless the
@@ -233,7 +237,7 @@ impl<S: 'static> FnOnceQueue<S> {
 
 impl<S> Drop for FnOnceQueue<S> {
     fn drop(&mut self) {
-        self.drain_for_each(|ptr| unsafe { (&mut *ptr).drop() });
+        self.drain_for_each(|ptr| unsafe { (*ptr).drop() });
     }
 }
 
