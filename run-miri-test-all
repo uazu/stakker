@@ -2,6 +2,12 @@
 
 # To install MIRI, see: https://github.com/rust-lang/miri
 
+echo "Sometime between 2022-07 and 2022-10 MIRI stopped simulating vtables,"
+echo "so this will probably fail very early.  This means that it's not "
+echo "possible to check for undefined behaviour, at least not in the 'flat'"
+echo "queue implementation, unless you use an old nightly."
+echo ""
+
 run() {
     export MIRIFLAGS=-Zmiri-disable-isolation
     ./run-all-feature-comb.pl cargo +nightly miri test --no-default-features --features || exit 1

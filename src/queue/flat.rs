@@ -8,8 +8,28 @@ use std::mem;
 // or made things slower.
 
 // NOTE: This code uses a lot of unsafe.  It has no UB according to
-// MIRI, but still if you'd prefer not to use this code, enable cargo
-// feature `no-unsafe-queue`.
+// MIRI (as of 2022-07-01), but still if you'd prefer not to use this
+// code, enable cargo feature `no-unsafe-queue`.
+//
+// Update 2023-03: MIRI appears to have dropped support for simulating
+// vtables so currently this will fail under MIRI, and so it's no
+// longer possible to verify that there is no undefined behaviour
+// (unless you use an old nightly).
+//
+// Really I need the required functionality to be added to Rust's
+// `std`, to disassemble and reassemble fat pointers.  The RFC has
+// been accepted but there is no progress on the implementation:
+//
+// https://github.com/rust-lang/rfcs/pull/2580
+// https://github.com/rust-lang/rust/issues/81513
+// https://crates.io/crates/rfc2580  (currently broken)
+//
+// So until there is some progress here, it's necessary to hard-code
+// some knowledge of Rust's internals, but here it is done in a way
+// that can be checked and that will fail very early in case of any
+// problem.
+//
+// # Implementation
 //
 // Strictly-speaking (according to "Behaviour considered undefined" in
 // the Rust reference) it's UB to get hold of the Layout from a vtable
@@ -25,9 +45,7 @@ use std::mem;
 // So the only way to pass MIRI tests and to avoid that UB at the
 // moment is to hard-code knowledge of the location of the `size` and
 // `align` fields inside the vtable.  If RustC changes this layout,
-// then new layouts can be added here conditional on the Rust version,
-// or even better Rust might implement something like Simon Sapin's
-// proposal: https://github.com/rust-lang/rfcs/pull/2580
+// then new layouts can be added here conditional on the Rust version.
 //
 // Unlike UB, this hard-coded knowledge can be checked at run-time and
 // fail early if RustC changes.  In future it might be possible to
