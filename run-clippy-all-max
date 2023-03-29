@@ -1,0 +1,7 @@
+#!/bin/bash
+
+# Maximise the number of combinations of features tested, rather than
+# use the shorter combined list of features which minimises testing
+# time.
+
+./run-all-feature-comb.pl --max cargo clippy --no-default-features --features

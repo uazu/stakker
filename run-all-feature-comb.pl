@@ -4,14 +4,25 @@
 # switched on/off together).  Related features must go on different
 # lines (and are switched independently).  This way we can minimise
 # the number of tests required.
+#
+# These interrelated features must not change together:
+# - multi-thread multi-stakker inline-deferrer no-unsafe no-unsafe-queue
 my $FEATURE_SETS = <<"EOF";
-no-unsafe anymap inter-thread
-no-unsafe-queue inline-deferrer
+inline-deferrer inter-thread
+no-unsafe anymap
+no-unsafe-queue
 multi-stakker logger
 multi-thread
 EOF
-
 my @FEATURES = split(/\s*\n\s*/, $FEATURE_SETS);
+
+my $MAX = 0;
+if ($ARGV[0] eq '--max') {
+    # Maximize combinations tested
+    @FEATURES = split(/\s+/, $FEATURE_SETS);
+    $MAX = 1;
+    shift @ARGV;
+}
 
 sub bitcount {
     return unpack('%32b*', pack('N', $_[0]));
@@ -23,7 +34,7 @@ sub bitcount_then_value {
 }
 
 my @COMMAND = @ARGV;
-die "Usage: run-all-feature-comb.pl <command...>" unless @COMMAND;
+die "Usage: run-all-feature-comb.pl [--max] <command...>" unless @COMMAND;
 
 # Create an order which tests no-features, then features one by one,
 # then combinations of two, then increasing numbers of features.  This
@@ -40,7 +51,11 @@ for my $bitmap (@order) {
     for my $i (0..@FEATURES-1) {
         push @tmp, $FEATURES[$i] if 0 != (1 & ($bitmap >> (@FEATURES-1-$i)));
     }
-    push @comb, join(' ', @tmp);
+    my $tmp = ' ' . join(' ', @tmp) . ' ';
+    # We don't need to test some combinations, since one overrides the other
+    next if !$MAX && $tmp =~ / multi-stakker / && $tmp =~ / multi-thread /;
+    next if !$MAX && $tmp =~ / no-unsafe / && $tmp =~ / no-unsafe-queue /;
+    push @comb, $tmp;
 }
 
 for my $c (@comb) {
@@ -52,8 +67,8 @@ for my $c (@comb) {
         # the 'tcell' cell option, test will fail if it is run on
         # multiple threads
         $ENV{RUST_TEST_THREADS} = "1";
-        $st = " (single-threaded)";
+        $st = "(single-threaded)";
     }
-    print("=== " . join(' ', @COMMAND) . " $c$st\n");
+    print("=== " . join(' ', @COMMAND) . "$c$st\n");
     die "FAILED\n" unless 0 == system(@COMMAND, $c);
 }

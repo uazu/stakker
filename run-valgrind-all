@@ -21,6 +21,12 @@ while (<>) {
 
 # This same script is called back from ./run-all-feature-comb.pl
 [ "$1" = "run-test" ] && {
+    if [ "$RUST_TEST_THREADS" = "1" ]
+    then
+        echo "SKIPPING single-threaded test for now.  Need to apply 'workaround-test-threads-issue'."
+        exit 0
+    fi
+
     # Run cargo test twice.  First builds and tests.  Second skips the
     # build (already done) and just runs the test under valgrind.  We
     # only want to valgrind the test, not all the build-related code.
