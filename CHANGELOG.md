@@ -5,6 +5,13 @@ before 0.1.0 is allowed to make breaking changes.
 
 <!-- see keepachangelog.com for format ideas -->
 
+## 0.2.6 (2023-03-29)
+
+### Fixed
+
+- Fixed build failure when "no-unsafe-queue" feature was enabled alone
+- Testing has been improved to catch any other similar issues
+
 ## 0.2.5 (2022-06-11)
 
 (maintenance)
