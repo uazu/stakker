@@ -1,3 +1,4 @@
+use std::convert::TryFrom;
 use std::error::Error;
 use std::fmt::{Arguments, Display};
 use std::ops::{BitOr, BitOrAssign};
@@ -127,7 +128,7 @@ pub struct LogRecord<'a> {
 pub type LogID = u64;
 
 /// Levels for logging
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
 #[repr(u32)]
 #[non_exhaustive]
 pub enum LogLevel {
@@ -209,6 +210,36 @@ impl LogLevel {
 impl Display for LogLevel {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.name().fmt(f)
+    }
+}
+
+impl TryFrom<u8> for LogLevel {
+    type Error = LogLevelError;
+
+    /// Convert back from `u8` to a LogLevel, if value is valid
+    fn try_from(value: u8) -> Result<Self, LogLevelError> {
+        const TRACE: u8 = LogLevel::Trace as u8;
+        const DEBUG: u8 = LogLevel::Debug as u8;
+        const INFO: u8 = LogLevel::Info as u8;
+        const WARN: u8 = LogLevel::Warn as u8;
+        const ERROR: u8 = LogLevel::Error as u8;
+        const OFF: u8 = LogLevel::Off as u8;
+        const AUDIT: u8 = LogLevel::Audit as u8;
+        const OPEN: u8 = LogLevel::Open as u8;
+        const CLOSE: u8 = LogLevel::Close as u8;
+
+        Ok(match value {
+            TRACE => Self::Trace,
+            DEBUG => Self::Debug,
+            INFO => Self::Info,
+            WARN => Self::Warn,
+            ERROR => Self::Error,
+            OFF => Self::Off,
+            AUDIT => Self::Audit,
+            OPEN => Self::Open,
+            CLOSE => Self::Close,
+            _ => return Err(LogLevelError),
+        })
     }
 }
 

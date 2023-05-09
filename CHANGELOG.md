@@ -5,6 +5,12 @@ before 0.1.0 is allowed to make breaking changes.
 
 <!-- see keepachangelog.com for format ideas -->
 
+## 0.2.7 (2023-05-09)
+
+## Added
+
+- `LogLevel::try_from(u8)` plus derives: Hash, Ord, PartialOrd
+
 ## 0.2.6 (2023-03-29)
 
 ### Fixed
