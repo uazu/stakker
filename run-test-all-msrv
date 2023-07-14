@@ -1,0 +1,4 @@
+#!/bin/bash
+
+# ./run-all-feature-comb.pl ./workaround-for-test-threads cargo +1.60 test __ || exit 1
+./run-all-feature-comb.pl cargo +1.60 test --no-default-features --features || exit 1

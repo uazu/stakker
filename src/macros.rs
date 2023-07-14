@@ -373,7 +373,7 @@ macro_rules! query {
 macro_rules! generic_call {
     // Closures
     ($handler:ident $hargs:tt $access:ident;
-     [$cx:expr], |$this:pat, $cxid:pat| $body:expr) => {{
+     [$cx:expr], |$this:pat_param, $cxid:pat_param| $body:expr) => {{
          $crate::COVERAGE!(generic_call_0);
          let cb = move |$this: &mut Self, $cxid: &mut $crate::Cx<'_, Self>| $body;
          let cx: &mut $crate::Cx<'_, Self> = $cx;  // Expecting Cx<Self> ref
@@ -382,7 +382,7 @@ macro_rules! generic_call {
          $crate::$handler!($hargs core; move |s| this.apply(s, cb));
      }};
     ($handler:ident $hargs:tt $access:ident;
-     [$core:expr], |$stakker:pat| $body:expr) => {{
+     [$core:expr], |$stakker:pat_param| $body:expr) => {{
          $crate::COVERAGE!(generic_call_1);
          let core = $core.$access();  // Expecting Core, Cx or Stakker ref
          let cb = move |$stakker : &mut $crate::Stakker| $body;
@@ -891,7 +891,7 @@ macro_rules! generic_fwd {
         $crate::indices!([$(($x))*] [$(($t))*] generic_fwd_prep $handler actor _args ($($t,)*) <$type> $method)
     }};
     // Calling closures
-    ($handler:ident; [$cx:expr], |$this:pat, $cxid:pat, $arg:ident : $t:ty| $($body:tt)+) => {{
+    ($handler:ident; [$cx:expr], |$this:pat_param, $cxid:pat_param, $arg:ident : $t:ty| $($body:tt)+) => {{
         $crate::COVERAGE!(generic_fwd_3);
         let cx: &mut $crate::Cx<'_, _> = $cx;  // Expecting Cx ref
         let actor = cx.this().clone();
@@ -899,7 +899,7 @@ macro_rules! generic_fwd {
                            move |$this, $cxid, $arg: $t| $($body)*;
                            std::compile_error!("`ret_to!` with a closure requires a single Option argument"))
     }};
-    ($handler:ident; [$cx:expr], |$this:pat, $cxid:pat $(, $arg:ident : $t:ty)*| $($body:tt)+) => {{
+    ($handler:ident; [$cx:expr], |$this:pat_param, $cxid:pat_param $(, $arg:ident : $t:ty)*| $($body:tt)+) => {{
         $crate::COVERAGE!(generic_fwd_4);
         let cx: &mut $crate::Cx<'_, _> = $cx;  // Expecting Cx ref
         let actor = cx.this().clone();
@@ -1101,7 +1101,7 @@ macro_rules! fwd_nop {
 /// [`ret_some_to!`]: macro.ret_some_to.html
 #[macro_export]
 macro_rules! ret_to {
-    ([$cx:expr], |$this:pat, $cxid:pat, $arg:ident : Option<$t:ty>| $($body:tt)+) => {{
+    ([$cx:expr], |$this:pat_param, $cxid:pat_param, $arg:ident : Option<$t:ty>| $($body:tt)+) => {{
         $crate::COVERAGE!(ret_to_0);
         let cx: &mut $crate::Cx<'_, _> = $cx;  // Expecting Cx ref
         let actor = cx.this().clone();

@@ -168,13 +168,6 @@
 //!
 //! Features enabled by default:
 //!
-//! - **anymap**: Brings in the `anymap` crate.  When enabled,
-//! [`Stakker`] keeps an `AnyMap` which can be used to store and
-//! access Stakker-wide values.  The intended use is for passing
-//! things related to the outer context through to actors, such as an
-//! I/O polling instance.  The alternative is to pass these through on
-//! actor creation.
-//!
 //! - **inter-thread**: Enables inter-thread operations such as
 //! [`Waker`] and [`PipedThread`].
 //!

@@ -1,15 +1,28 @@
 # Significant feature changes and additions
 
-This project follows Rust semantic versioning, so any patch release
-before 0.1.0 is allowed to make breaking changes.
+This project follows Rust semantic versioning.
 
 <!-- see keepachangelog.com for format ideas -->
 
+## 0.2.8 (2023-07-14)
+
+### Added
+
+- Test MSRV of 1.60
+- Use Rust 2021 edition
+
+### Fixed
+
+- Replaced unmaintained `anymap` crate with simple safe inline
+  implementation
+
+
 ## 0.2.7 (2023-05-09)
 
-## Added
+### Added
 
 - `LogLevel::try_from(u8)` plus derives: Hash, Ord, PartialOrd
+
 
 ## 0.2.6 (2023-03-29)
 
@@ -18,9 +31,11 @@ before 0.1.0 is allowed to make breaking changes.
 - Fixed build failure when "no-unsafe-queue" feature was enabled alone
 - Testing has been improved to catch any other similar issues
 
+
 ## 0.2.5 (2022-06-11)
 
 (maintenance)
+
 
 ## 0.2.4 (2021-05-14)
 
@@ -35,6 +50,7 @@ before 0.1.0 is allowed to make breaking changes.
 
 - `examples/` folder
 
+
 ## 0.2.3 (2021-04-22)
 
 ### Fixed
@@ -44,15 +60,18 @@ before 0.1.0 is allowed to make breaking changes.
   ones are discarded, since the first failure is closer to the origin
   of the problem.
 
+
 ## 0.2.2 (2021-04-06)
 
 ### Added
 
 - Minimum support for asynchronous tasks, in `task` module
 
+
 ## 0.2.1 (2021-02-25)
 
 (only documentation changes)
+
 
 ## 0.2.0 (2020-11-08)
 

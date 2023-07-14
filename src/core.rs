@@ -7,7 +7,8 @@ use crate::{
     Deferrer, FixedTimerKey, LogFilter, LogID, LogLevel, LogRecord, LogVisitor, MaxTimerKey,
     MinTimerKey, Share, StopCause, Waker,
 };
-use std::collections::VecDeque;
+use std::any::{Any, TypeId};
+use std::collections::{HashMap, VecDeque};
 use std::fmt::Arguments;
 use std::mem;
 use std::ops::{Deref, DerefMut};
@@ -335,8 +336,7 @@ pub struct Core {
     shutdown: Option<StopCause>,
     pub(crate) sharecell_owner: ShareCellOwner,
     pub(crate) actor_maker: ActorCellMaker,
-    #[cfg(feature = "anymap")]
-    anymap: anymap::Map,
+    anymap: HashMap<TypeId, Box<dyn Any>>,
     systime: Option<SystemTime>,
     start_instant: Instant,
     wake_handlers: WakeHandlers,
@@ -370,8 +370,7 @@ impl Core {
             shutdown: None,
             sharecell_owner: new_share_cell_owner(),
             actor_maker,
-            #[cfg(feature = "anymap")]
-            anymap: anymap::Map::new(),
+            anymap: HashMap::new(),
             systime: None,
             start_instant: now,
             wake_handlers: WakeHandlers::new(Box::new(|| unreachable!())),
@@ -610,10 +609,9 @@ impl Core {
 
     /// Put a value into the `anymap`.  This can be accessed using the
     /// [`Core::anymap_get`] or [`Core::anymap_try_get`] call.  An
-    /// anymap can store one value for each type (see crate
-    /// [`anymap`](https://docs.rs/anymap)).  The value must implement
-    /// `Clone`, i.e. it must act something like an `Rc` or else be
-    /// copyable data.
+    /// anymap can store one value for each Rust type.  The value must
+    /// implement `Clone`, i.e. it must act something like an `Rc` or
+    /// else be copyable data.
     ///
     /// This is intended to be used for storing certain global
     /// instances which actors may need to get hold of, for example an
@@ -634,13 +632,9 @@ impl Core {
     /// [`Core::anymap_get`]: struct.Core.html#method.anymap_get
     /// [`Core::anymap_try_get`]: struct.Core.html#method.anymap_try_get
     /// [`Share`]: struct.Share.html
-    #[cfg_attr(not(feature = "anymap"), allow(unused_variables))]
     #[inline]
     pub fn anymap_set<T: Clone + 'static>(&mut self, val: T) {
-        // If "anymap" feature is not configured, ignore this
-        // operation, but panic on the `anymap_get`
-        #[cfg(feature = "anymap")]
-        self.anymap.insert(val);
+        self.anymap.insert(TypeId::of::<T>(), Box::new(val));
     }
 
     /// Gets a clone of a value from the Stakker `anymap`.  This is
@@ -658,10 +652,10 @@ impl Core {
     /// Stakker is running inside.  Returns `None` if the value is
     /// missing.
     pub fn anymap_try_get<T: Clone + 'static>(&mut self) -> Option<T> {
-        #[cfg(feature = "anymap")]
-        return self.anymap.get::<T>().cloned();
-        #[cfg(not(feature = "anymap"))]
-        panic!("Enable feature 'anymap' to use anymap_get() or anymap_try_get()");
+        self.anymap
+            .get(&TypeId::of::<T>())
+            .and_then(|o| o.downcast_ref::<T>())
+            .cloned()
     }
 
     /// Request that the event loop terminate.  For this to work, the
@@ -693,7 +687,7 @@ impl Core {
     ///
     /// [`Core::not_shutdown`]: struct.Core.html#method.not_shutdown
     pub fn shutdown_reason(&mut self) -> Option<StopCause> {
-        mem::replace(&mut self.shutdown, None)
+        self.shutdown.take()
     }
 
     /// Get a new [`Deferrer`] instance which can be used to defer
@@ -801,7 +795,7 @@ impl Core {
         // address will be passed to the logger.
         #[cfg(feature = "logger")]
         if self.log_check(level) {
-            if let Some(mut logger) = mem::replace(&mut self.logger, None) {
+            if let Some(mut logger) = self.logger.take() {
                 logger(
                     self,
                     &LogRecord {

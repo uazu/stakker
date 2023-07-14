@@ -9,7 +9,7 @@
 # - multi-thread multi-stakker inline-deferrer no-unsafe no-unsafe-queue
 my $FEATURE_SETS = <<"EOF";
 inline-deferrer inter-thread
-no-unsafe anymap
+no-unsafe
 no-unsafe-queue
 multi-stakker logger
 multi-thread

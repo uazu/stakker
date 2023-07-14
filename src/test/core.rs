@@ -1,4 +1,5 @@
 use crate::*;
+use std::rc::Rc;
 use std::time::{Duration, Instant, SystemTime};
 
 #[test]
@@ -21,4 +22,22 @@ fn test_times() {
     assert_eq!(t0, s.start_instant());
     assert_eq!(t1, s.now());
     assert_eq!(s1, s.systime());
+}
+
+#[test]
+fn anymap() {
+    let mut stakker = Stakker::new(Instant::now());
+    let s = &mut stakker;
+
+    s.anymap_set(Rc::new(42u8));
+    s.anymap_set(Rc::new(-17i8));
+    assert_eq!(42, *s.anymap_get::<Rc<u8>>());
+    assert_eq!(-17, *s.anymap_get::<Rc<i8>>());
+
+    s.anymap_set(Rc::new(24u8));
+    assert_eq!(24, *s.anymap_get::<Rc<u8>>());
+    assert_eq!(-17, *s.anymap_get::<Rc<i8>>());
+
+    assert_eq!(None, s.anymap_try_get::<Rc<u16>>());
+    assert_eq!(None, s.anymap_try_get::<Rc<i16>>());
 }

@@ -108,7 +108,7 @@ impl<O: Send + Sync + 'static, I: Send + Sync + 'static> PipedThread<O, I> {
             let mut lock = qu.mutex.lock().unwrap();
             let recv = mem::take(&mut lock.recv);
             if deleted {
-                panic = mem::replace(&mut lock.panic, None);
+                panic = lock.panic.take();
             }
             drop(lock);
 
