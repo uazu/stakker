@@ -11,6 +11,7 @@ use static_assertions::assert_eq_size;
 
 /// Returner for messages of type `M`
 ///
+/// Typically this would be created using one of the `ret_*!` macros.
 /// This can be called only once, and if dropped, it will return a
 /// message of `None`.
 ///

@@ -84,8 +84,10 @@
 //!
 //! For interfacing with other threads, [`PipedThread`] wraps a thread
 //! and handles all data transfer to/from it and all cleanup.
+//! [`Channel`] allows other threads to send messages to an actor.
 //! [`Waker`] is a primitive which allows channels and other data
-//! transfer to the main thread to be coordinated.
+//! transfer to the main thread to be coordinated.  [See here](sync)
+//! for more details.
 //!
 //!
 //! # Efficiency
@@ -456,16 +458,17 @@
 //!
 //! [`ActorOwn`]: struct.ActorOwn.html
 //! [`Actor`]: struct.Actor.html
+//! [`Channel`]: sync/struct.Channel.html
 //! [`Core`]: struct.Core.html
 //! [`Cx`]: struct.Cx.html
 //! [`Deferrer`]: struct.Deferrer.html
 //! [`Fwd`]: struct.Fwd.html
-//! [`PipedThread`]: struct.PipedThread.html
+//! [`PipedThread`]: sync/struct.PipedThread.html
 //! [`Ret`]: struct.Ret.html
 //! [`Share`]: struct.Share.html
 //! [`Stakker::set_logger`]: struct.Stakker.html#method.set_logger
 //! [`Stakker`]: struct.Stakker.html
-//! [`Waker`]: struct.Waker.html
+//! [`Waker`]: sync/struct.Waker.html
 //! [`actor!`]: macro.actor.html
 //! [`call!`]: macro.call.html
 //! [`fwd!`]: macro.fwd.html
@@ -488,9 +491,14 @@ pub use deferrer::Deferrer;
 pub use fwd::Fwd;
 pub use ret::Ret;
 pub use share::{Share, ShareWeak};
-pub use thread::{PipedLink, PipedThread};
 pub use timers::{FixedTimerKey, MaxTimerKey, MinTimerKey};
-pub use waker::Waker;
+
+// These are for backwards-compatibility.  They allow the types to
+// still be accessed at the top level of the crate, but hides this in
+// the online docs.  Not hiding it in the locally-generated docs
+// allows semver-checks to pass.
+#[cfg_attr(docsrs, doc(hidden))]
+pub use sync::{PipedLink, PipedThread, Waker};
 
 /// Auxiliary types that are not interesting in themselves
 pub mod aux {
@@ -524,10 +532,9 @@ mod log;
 mod macros;
 mod ret;
 mod share;
+pub mod sync;
 pub mod task;
-mod thread;
 mod timers;
-mod waker;
 
 #[cfg(test)]
 mod test;

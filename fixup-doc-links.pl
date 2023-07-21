@@ -1,6 +1,7 @@
 #!/usr/bin/perl -w
 
-# Version: 2020-11-02
+# Version: 2023-07-21, specific to Stakker (special handling of sync/
+# and task/)
 #
 # This code assumes that it owns all the `[...]: ...` definitions at
 # the end of each doc comment block.  It deletes them and rewrites
@@ -58,7 +59,14 @@ push @rs, glob('src/*/*/*.rs');
 my %unknown = ();
 my @curr = ();
 my $prefix = '';
-my @BASES = qw(struct enum trait type);
+my $top = '';
+my @BASES;
+
+for my $dir ('', 'sync/', 'task/') {
+    for my $typ (qw(struct enum trait type)) {
+        push @BASES, "$dir$typ";
+    }
+}
 
 sub process_section {
     if ($prefix eq '') {
@@ -78,7 +86,7 @@ sub process_section {
     my %links = ();
     my $data = join('', @curr);
     $data =~ s/```.*?```//sg;
-    while ($data =~ /(\[`[^`]+`\])[^(]/g) {
+    while ($data =~ /(\[`[^`(]+`\])[^(]/g) {
         $links{$1} = 1;
     }
     my @linkdefs = ();
@@ -123,7 +131,7 @@ sub process_section {
             $id = $1 if $fn =~ s/#([^#]*)$//;
             my $fnpath = "$DOCDIR/$fn";
             if (-f $fnpath) {
-                push @linkdefs, "$link: $href";
+                push @linkdefs, "$link: $top$href";
                 if (defined $id) {
                     my $html = readfile($fnpath);
                     print "WARNING: Missing anchor '$id' in file: $fnpath\n"
@@ -154,6 +162,9 @@ for my $fnam (@rs) {
     my $ofnam = "$fnam-NEW";
     @curr = ();
     $prefix = '';
+
+    $top = '';
+    $top = "../" if $fnam =~ m|/sync/| || $fnam =~ m|/task/|;
 
     die "Can't open file: $fnam" unless open IN, "<$fnam";
     die "Can't create file: $ofnam" unless open OUT, ">$ofnam";

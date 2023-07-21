@@ -1,0 +1,4 @@
+#!/bin/bash
+
+echo "=== Docs.rs output"
+RUSTDOCFLAGS="--cfg docsrs" cargo +nightly doc --all-features

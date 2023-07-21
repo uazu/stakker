@@ -123,7 +123,7 @@ impl WakeHandlers {
     /// itself.  A wake handler is only deleted when the [`Waker`] is
     /// dropped.  A `drop_list` wake handler won't delete itself.
     ///
-    /// [`Waker`]: struct.Waker.html
+    /// [`Waker`]: ../sync/struct.Waker.html
     pub fn handler_restore(&mut self, bit: u32, cb: BoxFnMutCB) {
         if mem::replace(
             self.slab
@@ -244,8 +244,8 @@ impl WakeHandlers {
 /// other thread can recognise the situation and terminate, ensuring
 /// that things clean up nicely in case of failure of the actor.
 ///
-/// [`Core::waker`]: struct.Core.html#method.waker
-/// [`Waker`]: struct.Waker.html
+/// [`Core::waker`]: ../struct.Core.html#method.waker
+/// [`Waker`]: ../sync/struct.Waker.html
 pub struct Waker {
     bit: u32,
     bitmap: Arc<BitMap>,
@@ -282,7 +282,7 @@ impl Waker {
     /// `channel.send_and_was_empty()` call), it's necessary to wake
     /// on every send.
     ///
-    /// [`Waker`]: struct.Waker.html
+    /// [`Waker`]: ../sync/struct.Waker.html
     pub fn wake(&self) {
         self.bitmap.set(self.bit);
     }

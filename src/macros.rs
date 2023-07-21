@@ -305,13 +305,11 @@ macro_rules! actor_of_trait {
 ///     }));
 /// ```
 ///
-/// [`ActorOwnSlab`]: struct.ActorOwnSlab.html
-/// [`ActorOwn`]: struct.ActorOwn.html
-/// [`StopCause`]: enum.StopCause.html
-//
 /// Implemented using [`ActorOwnSlab::add`].
 ///
 /// [`ActorOwnSlab::add`]: struct.ActorOwnSlab.html#method.add
+/// [`ActorOwnSlab`]: struct.ActorOwnSlab.html
+/// [`ActorOwn`]: struct.ActorOwn.html
 #[macro_export]
 macro_rules! actor_in_slab {
     ($self:ident.$children:ident, $cx:expr, $type:ident :: $init:ident($($x:expr),* $(,)? )) => {{

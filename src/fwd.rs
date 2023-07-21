@@ -4,6 +4,7 @@ use static_assertions::assert_eq_size;
 
 /// Forwarder for messages of type `M`
 ///
+/// Typically this would be created using one of the `fwd_*!` macros.
 /// This may be called many times to forward different messages to the
 /// same end-point.  For situations where a callback can be used at
 /// most one time, prefer [`Ret`], because it is less restrictive on

@@ -1,8 +1,8 @@
 use crate::cell::cell::{new_actor_cell_owner, new_share_cell_owner};
 use crate::cell::cell::{ActorCellMaker, ActorCellOwner, ShareCellOwner};
 use crate::queue::FnOnceQueue;
+use crate::sync::waker::WakeHandlers;
 use crate::timers::Timers;
-use crate::waker::WakeHandlers;
 use crate::{
     Deferrer, FixedTimerKey, LogFilter, LogID, LogLevel, LogRecord, LogVisitor, MaxTimerKey,
     MinTimerKey, Share, StopCause, Waker,
@@ -235,7 +235,7 @@ impl Stakker {
     /// user's chosen I/O polling implementation (for example
     /// `stakker_mio`) on initialisation.
     ///
-    /// [`Waker`]: struct.Waker.html
+    /// [`Waker`]: sync/struct.Waker.html
     pub fn set_poll_waker(&mut self, waker: impl Fn() + Send + Sync + 'static) {
         if !self.wake_handlers_unset {
             panic!("Stakker::set_poll_waker called more than once");
@@ -250,7 +250,7 @@ impl Stakker {
     /// (e.g. `stakker_mio`) makes this call to let **Stakker** know
     /// that it should do its [`Waker`] handling.
     ///
-    /// [`Waker`]: struct.Waker.html
+    /// [`Waker`]: sync/struct.Waker.html
     pub fn poll_wake(&mut self) {
         // Due to wake handlers needing a Stakker ref, we can't have
         // any borrow on the `wake_handlers` active.  So we
@@ -722,8 +722,8 @@ impl Core {
     /// [`Stakker::set_poll_waker`].
     ///
     /// [`Stakker::set_poll_waker`]: struct.Stakker.html#method.set_poll_waker
-    /// [`Waker::wake`]: struct.Waker.html#method.wake
-    /// [`Waker`]: struct.Waker.html
+    /// [`Waker::wake`]: sync/struct.Waker.html#method.wake
+    /// [`Waker`]: sync/struct.Waker.html
     pub fn waker(&mut self, cb: impl FnMut(&mut Stakker, bool) + 'static) -> Waker {
         if self.wake_handlers_unset {
             panic!("Core::waker() called with no waker set up");

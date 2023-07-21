@@ -64,10 +64,10 @@ struct QueuesInner<O: Send + Sync + 'static, I: Send + Sync + 'static> {
 /// care of thread cleanup automatically if the actor fails
 /// unexpectedly.
 ///
-/// [`PipedLink::recv`]: struct.PipedLink.html#method.recv
-/// [`PipedLink::send`]: struct.PipedLink.html#method.send
-/// [`PipedThread`]: struct.PipedThread.html
-/// [`Waker`]: struct.Waker.html
+/// [`PipedLink::recv`]: ../sync/struct.PipedLink.html#method.recv
+/// [`PipedLink::send`]: ../sync/struct.PipedLink.html#method.send
+/// [`PipedThread`]: ../sync/struct.PipedThread.html
+/// [`Waker`]: ../sync/struct.Waker.html
 pub struct PipedThread<O: Send + Sync + 'static, I: Send + Sync + 'static> {
     queues: Arc<Queues<O, I>>,
 }
@@ -85,7 +85,7 @@ impl<O: Send + Sync + 'static, I: Send + Sync + 'static> PipedThread<O, I> {
     /// similar macros can be used directly in the call arguments,
     /// without borrow errors.
     ///
-    /// [`PipedLink`]: struct.PipedLink.html
+    /// [`PipedLink`]: ../sync/struct.PipedLink.html
     pub fn spawn(
         fwd_recv: Fwd<I>,
         fwd_term: Fwd<Option<String>>,
@@ -168,7 +168,7 @@ impl<O: Send + Sync + 'static, I: Send + Sync + 'static> Drop for PipedThread<O,
 
 /// Link from a [`PipedThread`] thread back to the main thread
 ///
-/// [`PipedThread`]: struct.PipedThread.html
+/// [`PipedThread`]: ../sync/struct.PipedThread.html
 pub struct PipedLink<O: Send + Sync + 'static, I: Send + Sync + 'static> {
     queues: Arc<Queues<O, I>>,
     waker: Waker,
@@ -179,7 +179,7 @@ impl<O: Send + Sync + 'static, I: Send + Sync + 'static> PipedLink<O, I> {
     /// success.  If `false` is returned, then the [`PipedThread`] has
     /// been dropped and this thread should terminate itself.
     ///
-    /// [`PipedThread`]: struct.PipedThread.html
+    /// [`PipedThread`]: ../sync/struct.PipedThread.html
     pub fn send(&mut self, msg: I) -> bool {
         let mut lock = self.queues.mutex.lock().unwrap();
         let cancel = lock.cancel;
@@ -198,7 +198,7 @@ impl<O: Send + Sync + 'static, I: Send + Sync + 'static> PipedLink<O, I> {
     /// [`PipedThread`] has been dropped, in which case this thread
     /// should terminate itself.
     ///
-    /// [`PipedThread`]: struct.PipedThread.html
+    /// [`PipedThread`]: ../sync/struct.PipedThread.html
     pub fn recv(&mut self) -> Option<O> {
         let mut lock = self.queues.mutex.lock().unwrap();
         while !lock.cancel && lock.send.is_empty() {
@@ -218,7 +218,7 @@ impl<O: Send + Sync + 'static, I: Send + Sync + 'static> PipedLink<O, I> {
     /// the **cancel** flag from time to time to recognise this
     /// condition and to clean up in good time.
     ///
-    /// [`PipedThread`]: struct.PipedThread.html
+    /// [`PipedThread`]: ../sync/struct.PipedThread.html
     pub fn cancel(&mut self) -> bool {
         self.queues.mutex.lock().unwrap().cancel
     }

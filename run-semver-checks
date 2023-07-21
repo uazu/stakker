@@ -1,0 +1,24 @@
+#!/bin/bash
+
+# Install cargo-semver-checks first
+
+# This script is called back from run-all-feature-comb.pl
+if [ "$1" = "callback" ]
+then
+    CMD="$COMMAND"
+    for feature in $2
+    do
+        CMD="$CMD --features $feature"
+    done
+    $CMD
+    exit $?
+fi
+
+if [ -z "$1" ]
+then
+    export COMMAND="cargo semver-checks --only-explicit-features"
+else
+    export COMMAND="cargo semver-checks --baseline-rev $1 --only-explicit-features"
+fi
+
+./run-all-feature-comb.pl ./run-semver-checks callback

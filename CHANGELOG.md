@@ -4,6 +4,13 @@ This project follows Rust semantic versioning.
 
 <!-- see keepachangelog.com for format ideas -->
 
+## 0.2.9 (2023-07-24)
+
+### Added
+
+- `Channel` to send messages to a Stakker thread from any other thread
+
+
 ## 0.2.8 (2023-07-14)
 
 ### Added

@@ -2,13 +2,17 @@
 
 //! Test `PipedThread` functionality
 
+use crate::sync::{Channel, ChannelGuard};
 use crate::*;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 use std::time::Instant;
 
 /// Simple channel for sending and waiting for notification events.
-/// Returns (send, recv) closures.
+/// Returns (send, recv) closures.  This means that we can simulate a
+/// `mio` waker (or equivalent) for testing without needing to pull in
+/// `stakker_mio`.
 fn notify_channel() -> (impl Fn() + Send + Sync, impl FnMut() + Send + Sync) {
     let pair1 = Arc::new((Mutex::new(0_usize), Condvar::new()));
     let pair2 = pair1.clone();
@@ -288,6 +292,74 @@ fn pipedthread_panic() {
                 panic!("Unexpected successful completion of thread");
             }
             cx.stop();
+        }
+    }
+
+    let now = Instant::now();
+    let mut stakker = Stakker::new(now);
+    let s = &mut stakker;
+    let (tx, mut rx) = notify_channel();
+    s.set_poll_waker(tx);
+
+    let _actor = actor!(s, Test::init(), ret_shutdown!(s));
+    s.run(now, false);
+    while s.not_shutdown() {
+        rx();
+        s.poll_wake();
+        s.run(now, false);
+    }
+}
+
+/// Test sending data with a `Channel`, and test "close" behaviour.
+#[test]
+fn channel() {
+    struct Test {
+        expect: usize,
+        guard: Option<ChannelGuard>,
+        done: Arc<AtomicBool>,
+    }
+    impl Test {
+        fn init(cx: CX![]) -> Option<Self> {
+            let fwd = fwd_to!([cx], recv() as (usize));
+            let (channel, guard) = Channel::new(cx, fwd);
+            let done = Arc::new(AtomicBool::new(false));
+            let done_clone = done.clone();
+            std::thread::spawn(move || {
+                for value in 0..20 {
+                    std::thread::sleep(Duration::from_millis(10));
+                    if !channel.send(value) {
+                        // Main thread closes channel after 9
+                        // received.  Give it a generous 50ms for the
+                        // close to go through.
+                        assert!(value >= 10 && value < 15, "Test system overloaded?");
+                        done_clone.store(true, Ordering::SeqCst);
+                        return;
+                    }
+                }
+                panic!("Test system overloaded?");
+            });
+            Some(Self {
+                expect: 0,
+                guard: Some(guard),
+                done,
+            })
+        }
+        fn recv(&mut self, cx: CX![], value: usize) {
+            assert_eq!(value, self.expect);
+            self.expect += 1;
+            if self.expect == 10 {
+                // Drop guard (closing channel)
+                self.guard = None;
+                // Wait for thread to finish.  This is blocking code
+                // but it's just for testing
+                for _ in 0..50 {
+                    if self.done.load(Ordering::SeqCst) {
+                        return cx.stop();
+                    }
+                    std::thread::sleep(Duration::from_millis(1));
+                }
+                panic!("Thread did not stop within 50ms");
+            }
         }
     }
 

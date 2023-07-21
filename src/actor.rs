@@ -781,6 +781,7 @@ impl<T: 'static> ActorOwnSlab<T> {
     /// [`ActorOwnSlab`]: struct.ActorOwnSlab.html
     /// [`ActorOwn`]: struct.ActorOwn.html
     /// [`Actor`]: struct.Actor.html
+    /// [`StopCause`]: enum.StopCause.html
     /// [`actor_new!`]: macro.actor_new.html
     #[inline]
     pub fn add<P>(
