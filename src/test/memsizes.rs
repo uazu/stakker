@@ -21,17 +21,18 @@ struct Actors {
     _a2: ActorOwn<Actor2000>,
 }
 
-#[test]
-fn actor_size() {
-    let mut stakker = Stakker::new(Instant::now());
-    let s = &mut stakker;
-    let _a0 = actor_new!(s, Actor0, ret_nop!());
-    let _a1 = actor_new!(s, Actor1000, ret_to!([_a0], test() as (StopCause)));
-    let _a2 = actor_new!(s, Actor2000, ret_panic!("Shouldn't have died"));
+test_fn!(
+    fn actor_size() {
+        let mut stakker = Stakker::new(Instant::now());
+        let s = &mut stakker;
+        let _a0 = actor_new!(s, Actor0, ret_nop!());
+        let _a1 = actor_new!(s, Actor1000, ret_to!([_a0], test() as (StopCause)));
+        let _a2 = actor_new!(s, Actor2000, ret_panic!("Shouldn't have died"));
 
-    if std::env::var("STAKKER_ENABLE_TEST_MEMSIZES").is_ok() {
-        // Forget a boxed struct holding the references.  This means that
-        // they show up as indirect lost blocks in valgrind
-        std::mem::forget(Box::new(Actors { _a0, _a1, _a2 }));
+        if std::env::var("STAKKER_ENABLE_TEST_MEMSIZES").is_ok() {
+            // Forget a boxed struct holding the references.  This means that
+            // they show up as indirect lost blocks in valgrind
+            std::mem::forget(Box::new(Actors { _a0, _a1, _a2 }));
+        }
     }
-}
+);

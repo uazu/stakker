@@ -1,4 +1,7 @@
 #!/bin/bash
 
-# ./run-all-feature-comb.pl ./workaround-for-test-threads cargo +1.60 test __ || exit 1
-./run-all-feature-comb.pl cargo +1.60 test --no-default-features --features || exit 1
+./run-feature-combinations | while read FEATURES
+do
+    echo === $FEATURES
+    cargo +1.63 test $FEATURES || exit 1
+done

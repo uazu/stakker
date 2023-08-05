@@ -1,3 +1,6 @@
+#[macro_use]
+mod test;
+
 mod actor;
 mod core;
 mod extra;

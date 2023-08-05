@@ -4,4 +4,8 @@
 # use the shorter combined list of features which minimises testing
 # time.
 
-./run-all-feature-comb.pl --max cargo clippy --no-default-features --features
+./run-feature-combinations --max | while read FEATURES
+do
+    echo === $FEATURES
+    cargo clippy $FEATURES
+done

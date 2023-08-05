@@ -1,9 +1,9 @@
 [package]
 name = "stakker"
-version = "0.2.9"
+version = "0.2.10"
 authors = ["Jim Peters <jim@uazu.net>"]
 edition = "2021"
-rust-version = "1.60.0"
+rust-version = "1.63.0"
 
 description = "A lightweight low-level single-threaded actor runtime"
 license = "MIT/Apache-2.0"
@@ -30,7 +30,7 @@ slab = "0.4"
 # break when different crates using Stakker are combined in a build.
 
 [features]
-default = ["inter-thread", "test-multi-thread"]
+default = ["inter-thread"]
 
 # Disable all unsafe code and compile with #[forbid(unsafe_code)]
 no-unsafe = []
@@ -52,14 +52,6 @@ inter-thread = []
 
 # Enable core logger support (Stakker::set_logger())
 logger = []
-
-# There is no way to tell `cargo test` to run in a single thread from
-# Cargo.toml, so in order to make `cargo test` succeed with no
-# additional options, when running tests, effectively enable feature
-# "multi-thread".  However this distorts testing of applications
-# because they might test with different features to what the
-# application will actually run with.  TODO: Find a better solution.
-test-multi-thread = []
 
 # Ignored for backwards-compatibility.  `anymap` is now always enabled
 anymap = []

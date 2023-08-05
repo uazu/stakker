@@ -4,16 +4,17 @@ use std::time::Instant;
 // This uses a snapshot of a small fuzzing corpus that gives full
 // coverage of queue operations in `cargo fuzz`
 
-#[test]
-fn run() {
-    let data = std::include_bytes!("queue_corpus.bin");
-    let mut p = &data[..];
-    while !p.is_empty() {
-        let len = ((p[0] as usize) << 8) + (p[1] as usize);
-        fuzz_queue(&p[2..2 + len]);
-        p = &p[2 + len..];
+test_fn!(
+    fn run() {
+        let data = std::include_bytes!("queue_corpus.bin");
+        let mut p = &data[..];
+        while !p.is_empty() {
+            let len = ((p[0] as usize) << 8) + (p[1] as usize);
+            fuzz_queue(&p[2..2 + len]);
+            p = &p[2 + len..];
+        }
     }
-}
+);
 
 // The idea is to push random sequences of calls of different lengths
 // onto the queue, interspersed with calls to run the queue.

@@ -1,14 +1,7 @@
 #!/bin/bash
 
-run() {
-    ./run-all-feature-comb.pl ./workaround-for-test-threads cargo test __ || exit 1
-#    ./run-all-feature-comb.pl cargo test --no-default-features --features || exit 1
-}
-
-if [ "$1" = "-r" ]
-then
-    # Repeat until failure
-    while :; do run; done
-else
-    run
-fi
+./run-feature-combinations | while read FEATURES
+do
+    echo === $FEATURES
+    cargo test $FEATURES || exit 1
+done

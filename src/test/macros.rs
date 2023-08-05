@@ -237,332 +237,348 @@ impl C {
     }
 }
 
-#[test]
-fn creation_call_and_response() {
-    let mut stakker = Stakker::new(Instant::now());
-    let s = &mut stakker;
-    let mut aux = Aux::new(s);
+test_fn!(
+    fn creation_call_and_response() {
+        let mut stakker = Stakker::new(Instant::now());
+        let s = &mut stakker;
+        let mut aux = Aux::new(s);
 
-    // 3 forms of actor creation with `actor!` and `actor_new!`
-    let a = actor_new!(s, A, ret_panic!("Actor A died"));
-    call!([a], A::init());
-    let b = actor!(s, B::init(123), ret_panic!("Actor B died"));
-    let c = actor!(
-        s,
-        <crate::test::macros::C>::init1(123, 23456),
-        ret_panic!("Actor C died")
-    );
+        // 3 forms of actor creation with `actor!` and `actor_new!`
+        let a = actor_new!(s, A, ret_panic!("Actor A died"));
+        call!([a], A::init());
+        let b = actor!(s, B::init(123), ret_panic!("Actor B died"));
+        let c = actor!(
+            s,
+            <crate::test::macros::C>::init1(123, 23456),
+            ret_panic!("Actor C died")
+        );
 
-    // Check result of get
-    let si = aux.si();
-    call!(
-        [a],
-        get(ret_some_do!(move |()| {
-            SCORE!(si);
-        }))
-    );
-    let si = aux.si();
-    call!(
-        [b],
-        get(ret_some_do!(move |v| {
-            assert_eq!(v, 123);
-            SCORE!(si);
-        }))
-    );
-    let si = aux.si();
-    call!(
-        [c],
-        get(ret_some_do!(move |(v1, v2)| {
-            assert_eq!(v1, 123);
-            assert_eq!(v2, 23456);
-            SCORE!(si);
-        }))
-    );
+        // Check result of get
+        let si = aux.si();
+        call!(
+            [a],
+            get(ret_some_do!(move |()| {
+                SCORE!(si);
+            }))
+        );
+        let si = aux.si();
+        call!(
+            [b],
+            get(ret_some_do!(move |v| {
+                assert_eq!(v, 123);
+                SCORE!(si);
+            }))
+        );
+        let si = aux.si();
+        call!(
+            [c],
+            get(ret_some_do!(move |(v1, v2)| {
+                assert_eq!(v1, 123);
+                assert_eq!(v2, 23456);
+                SCORE!(si);
+            }))
+        );
 
-    aux.run(s);
-    aux.check_scores();
-}
-
-#[test]
-fn actor_calls() {
-    let mut stakker = Stakker::new(Instant::now());
-    let s = &mut stakker;
-    let mut aux = Aux::new(s);
-
-    let a = actor_new!(s, A, ret_panic!("Actor A died"));
-    let b = actor_new!(s, B, ret_panic!("Actor B died"));
-    let c = actor_new!(s, C, ret_panic!("Actor C died"));
-
-    // Test that Ready calls are queued until after Prep state is
-    // established
-    call!([a], check(aux.si()));
-    call!([b], check(159, aux.si()));
-    call!([c], check(159, 54321, aux.si()));
-
-    // Test all forms of Prep call to another actor
-    call!([a], A::init());
-    call!([b], <B>::init(159));
-    call!([c], <crate::test::macros::C>::init1(159, 54321));
-
-    // Test some chained calls
-    call!([b], test(aux.si()));
-    call!([c], test(aux.si()));
-
-    // Test Stakker closure call
-    let si = aux.si();
-    call!([s], |_| SCORE!(si));
-
-    aux.run(s);
-    aux.check_scores();
-}
-
-#[test]
-fn lazy_prep_calls() {
-    let mut stakker = Stakker::new(Instant::now());
-    let s = &mut stakker;
-    let mut aux = Aux::new(s);
-
-    let a = actor_new!(s, A, ret_panic!("Actor A died"));
-    let b = actor_new!(s, B, ret_panic!("Actor B died"));
-    let c = actor_new!(s, C, ret_panic!("Actor C died"));
-
-    lazy!([a, s], A::init());
-    lazy!([b, s], <B>::init(159));
-    lazy!([c, s], <crate::test::macros::C>::init1(159, 54321));
-
-    // These will also get delayed and queued on the actor until it
-    // goes to Ready (which executes on the lazy queue)
-    call!([a], check(aux.si()));
-    call!([b], check(159, aux.si()));
-    call!([c], check(159, 54321, aux.si()));
-
-    aux.run(s);
-    aux.check_scores();
-}
-
-#[test]
-fn timers_and_queues() {
-    let mut stakker = Stakker::new(Instant::now());
-    let s = &mut stakker;
-    let mut aux = Aux::new(s);
-
-    let a = actor!(s, A::init(), ret_panic!("Actor A died"));
-    let fwd = fwd_to!([a], check() as (ScoreInc));
-
-    call!([a], check(aux.si()));
-    fwd!([fwd], aux.si());
-    idle!([a, s], check(aux.si()));
-    lazy!([a, s], check(aux.si()));
-    after!(Duration::from_secs(1), [a, s], check(aux.si()));
-    at!(s.now() + Duration::from_secs(3), [a, s], check(aux.si()));
-
-    let mut key = Default::default();
-    timer_max!(
-        &mut key,
-        s.now() + Duration::from_secs(5),
-        [a, s],
-        check(aux.si())
-    );
-    let mut key = Default::default();
-    timer_min!(
-        &mut key,
-        s.now() + Duration::from_secs(7),
-        [a, s],
-        check(aux.si())
-    );
-
-    aux.run(s);
-    aux.check_scores();
-}
-
-#[test]
-fn fwds() {
-    let mut stakker = Stakker::new(Instant::now());
-    let s = &mut stakker;
-    let mut aux = Aux::new(s);
-
-    let a = actor_new!(s, A, ret_panic!("Actor A died"));
-    let b = actor_new!(s, B, ret_panic!("Actor B died"));
-    let c = actor_new!(s, C, ret_panic!("Actor C died"));
-
-    let fwd = fwd_to!([a], check() as (ScoreInc));
-    fwd!([fwd], aux.si());
-    let fwd = fwd_to!([b], check() as (u8, ScoreInc));
-    fwd!([fwd], 159, aux.si());
-    let fwd = fwd_to!([c], check(159, 54321) as (ScoreInc));
-    fwd!([fwd], aux.si());
-
-    let fwd = fwd_to!([a], A::init() as ());
-    fwd!([fwd]);
-    let fwd = fwd_to!([b], <B>::init() as (u8));
-    fwd!([fwd], 159);
-    let fwd = fwd_to!([c], <crate::test::macros::C>::init1(159) as (u16));
-    fwd!([fwd], 54321);
-
-    // Self-based fwd tested in A
-    call!([a], fwd_test(aux.si(), aux.si(), aux.si()));
-
-    aux.run(s);
-    aux.check_scores();
-}
-
-#[test]
-fn fwds_2() {
-    let mut stakker = Stakker::new(Instant::now());
-    let s = &mut stakker;
-    let mut aux = Aux::new(s);
-
-    let a = actor_new!(s, A, ret_panic!("Actor A died"));
-    let b = actor_new!(s, B, ret_panic!("Actor B died"));
-    let c = actor_new!(s, C, ret_panic!("Actor C died"));
-
-    call!([a], check(aux.si()));
-    call!([b], check(159, aux.si()));
-    call!([c], check(159, 54321, aux.si()));
-
-    call!([a], A::fwd_init());
-    call!([b], B::fwd_init(159));
-    call!([c], C::fwd_init(159, 54321));
-
-    aux.run(s);
-    aux.check_scores();
-}
-
-#[test]
-fn ret() {
-    let mut stakker = Stakker::new(Instant::now());
-    let s = &mut stakker;
-    let mut aux = Aux::new(s);
-
-    let a = actor_new!(s, A, ret_panic!("Actor A died"));
-    let b = actor!(s, B::init(123), ret_panic!("Actor B died"));
-    call!([a], A::ret_test(b.clone(), aux.si()));
-
-    aux.run(s);
-    aux.check_scores();
-}
-
-#[test]
-fn ret_some() {
-    let mut stakker = Stakker::new(Instant::now());
-    let s = &mut stakker;
-    let mut aux = Aux::new(s);
-
-    let a = actor_new!(s, A, ret_panic!("Actor A died"));
-    let b = actor!(s, B::init(123), ret_panic!("Actor B died"));
-    call!([a], A::ret_some_test(b.clone(), aux.si()));
-
-    aux.run(s);
-    aux.check_scores();
-}
-
-#[test]
-fn fwd_misc() {
-    let mut stakker = Stakker::new(Instant::now());
-    let s = &mut stakker;
-
-    let fwd = fwd_nop!();
-    fwd!([fwd]);
-    let ret = ret_nop!();
-    ret!([ret]);
-
-    let ret = ret_shutdown!(s);
-    assert!(s.not_shutdown());
-    ret!([ret], StopCause::Stopped);
-    s.run(s.now(), false);
-    assert!(matches!(s.shutdown_reason(), Some(StopCause::Stopped)));
-
-    let ret = ret_shutdown!(s);
-    assert!(s.not_shutdown());
-    drop(ret);
-    s.run(s.now(), false);
-    assert!(matches!(s.shutdown_reason(), Some(StopCause::Dropped)));
-}
-
-#[test]
-fn actor_of_trait() {
-    type Animal = Box<dyn AnimalTrait>;
-    trait AnimalTrait {
-        fn sound(&mut self, cx: CX![Animal], si: ScoreInc);
+        aux.run(s);
+        aux.check_scores();
     }
-    struct Cat;
-    impl Cat {
-        fn init(_: CX![Animal]) -> Option<Animal> {
-            Some(Box::new(Self))
+);
+
+test_fn!(
+    fn actor_calls() {
+        let mut stakker = Stakker::new(Instant::now());
+        let s = &mut stakker;
+        let mut aux = Aux::new(s);
+
+        let a = actor_new!(s, A, ret_panic!("Actor A died"));
+        let b = actor_new!(s, B, ret_panic!("Actor B died"));
+        let c = actor_new!(s, C, ret_panic!("Actor C died"));
+
+        // Test that Ready calls are queued until after Prep state is
+        // established
+        call!([a], check(aux.si()));
+        call!([b], check(159, aux.si()));
+        call!([c], check(159, 54321, aux.si()));
+
+        // Test all forms of Prep call to another actor
+        call!([a], A::init());
+        call!([b], <B>::init(159));
+        call!([c], <crate::test::macros::C>::init1(159, 54321));
+
+        // Test some chained calls
+        call!([b], test(aux.si()));
+        call!([c], test(aux.si()));
+
+        // Test Stakker closure call
+        let si = aux.si();
+        call!([s], |_| SCORE!(si));
+
+        aux.run(s);
+        aux.check_scores();
+    }
+);
+
+test_fn!(
+    fn lazy_prep_calls() {
+        let mut stakker = Stakker::new(Instant::now());
+        let s = &mut stakker;
+        let mut aux = Aux::new(s);
+
+        let a = actor_new!(s, A, ret_panic!("Actor A died"));
+        let b = actor_new!(s, B, ret_panic!("Actor B died"));
+        let c = actor_new!(s, C, ret_panic!("Actor C died"));
+
+        lazy!([a, s], A::init());
+        lazy!([b, s], <B>::init(159));
+        lazy!([c, s], <crate::test::macros::C>::init1(159, 54321));
+
+        // These will also get delayed and queued on the actor until it
+        // goes to Ready (which executes on the lazy queue)
+        call!([a], check(aux.si()));
+        call!([b], check(159, aux.si()));
+        call!([c], check(159, 54321, aux.si()));
+
+        aux.run(s);
+        aux.check_scores();
+    }
+);
+
+test_fn!(
+    fn timers_and_queues() {
+        let mut stakker = Stakker::new(Instant::now());
+        let s = &mut stakker;
+        let mut aux = Aux::new(s);
+
+        let a = actor!(s, A::init(), ret_panic!("Actor A died"));
+        let fwd = fwd_to!([a], check() as (ScoreInc));
+
+        call!([a], check(aux.si()));
+        fwd!([fwd], aux.si());
+        idle!([a, s], check(aux.si()));
+        lazy!([a, s], check(aux.si()));
+        after!(Duration::from_secs(1), [a, s], check(aux.si()));
+        at!(s.now() + Duration::from_secs(3), [a, s], check(aux.si()));
+
+        let mut key = Default::default();
+        timer_max!(
+            &mut key,
+            s.now() + Duration::from_secs(5),
+            [a, s],
+            check(aux.si())
+        );
+        let mut key = Default::default();
+        timer_min!(
+            &mut key,
+            s.now() + Duration::from_secs(7),
+            [a, s],
+            check(aux.si())
+        );
+
+        aux.run(s);
+        aux.check_scores();
+    }
+);
+
+test_fn!(
+    fn fwds() {
+        let mut stakker = Stakker::new(Instant::now());
+        let s = &mut stakker;
+        let mut aux = Aux::new(s);
+
+        let a = actor_new!(s, A, ret_panic!("Actor A died"));
+        let b = actor_new!(s, B, ret_panic!("Actor B died"));
+        let c = actor_new!(s, C, ret_panic!("Actor C died"));
+
+        let fwd = fwd_to!([a], check() as (ScoreInc));
+        fwd!([fwd], aux.si());
+        let fwd = fwd_to!([b], check() as (u8, ScoreInc));
+        fwd!([fwd], 159, aux.si());
+        let fwd = fwd_to!([c], check(159, 54321) as (ScoreInc));
+        fwd!([fwd], aux.si());
+
+        let fwd = fwd_to!([a], A::init() as ());
+        fwd!([fwd]);
+        let fwd = fwd_to!([b], <B>::init() as (u8));
+        fwd!([fwd], 159);
+        let fwd = fwd_to!([c], <crate::test::macros::C>::init1(159) as (u16));
+        fwd!([fwd], 54321);
+
+        // Self-based fwd tested in A
+        call!([a], fwd_test(aux.si(), aux.si(), aux.si()));
+
+        aux.run(s);
+        aux.check_scores();
+    }
+);
+
+test_fn!(
+    fn fwds_2() {
+        let mut stakker = Stakker::new(Instant::now());
+        let s = &mut stakker;
+        let mut aux = Aux::new(s);
+
+        let a = actor_new!(s, A, ret_panic!("Actor A died"));
+        let b = actor_new!(s, B, ret_panic!("Actor B died"));
+        let c = actor_new!(s, C, ret_panic!("Actor C died"));
+
+        call!([a], check(aux.si()));
+        call!([b], check(159, aux.si()));
+        call!([c], check(159, 54321, aux.si()));
+
+        call!([a], A::fwd_init());
+        call!([b], B::fwd_init(159));
+        call!([c], C::fwd_init(159, 54321));
+
+        aux.run(s);
+        aux.check_scores();
+    }
+);
+
+test_fn!(
+    fn ret() {
+        let mut stakker = Stakker::new(Instant::now());
+        let s = &mut stakker;
+        let mut aux = Aux::new(s);
+
+        let a = actor_new!(s, A, ret_panic!("Actor A died"));
+        let b = actor!(s, B::init(123), ret_panic!("Actor B died"));
+        call!([a], A::ret_test(b.clone(), aux.si()));
+
+        aux.run(s);
+        aux.check_scores();
+    }
+);
+
+test_fn!(
+    fn ret_some() {
+        let mut stakker = Stakker::new(Instant::now());
+        let s = &mut stakker;
+        let mut aux = Aux::new(s);
+
+        let a = actor_new!(s, A, ret_panic!("Actor A died"));
+        let b = actor!(s, B::init(123), ret_panic!("Actor B died"));
+        call!([a], A::ret_some_test(b.clone(), aux.si()));
+
+        aux.run(s);
+        aux.check_scores();
+    }
+);
+
+test_fn!(
+    fn fwd_misc() {
+        let mut stakker = Stakker::new(Instant::now());
+        let s = &mut stakker;
+
+        let fwd = fwd_nop!();
+        fwd!([fwd]);
+        let ret = ret_nop!();
+        ret!([ret]);
+
+        let ret = ret_shutdown!(s);
+        assert!(s.not_shutdown());
+        ret!([ret], StopCause::Stopped);
+        s.run(s.now(), false);
+        assert!(matches!(s.shutdown_reason(), Some(StopCause::Stopped)));
+
+        let ret = ret_shutdown!(s);
+        assert!(s.not_shutdown());
+        drop(ret);
+        s.run(s.now(), false);
+        assert!(matches!(s.shutdown_reason(), Some(StopCause::Dropped)));
+    }
+);
+
+test_fn!(
+    fn actor_of_trait() {
+        type Animal = Box<dyn AnimalTrait>;
+        trait AnimalTrait {
+            fn sound(&mut self, cx: CX![Animal], si: ScoreInc);
         }
-    }
-    impl AnimalTrait for Cat {
-        fn sound(&mut self, _: CX![Animal], si: ScoreInc) {
-            SCORE!(si);
+        struct Cat;
+        impl Cat {
+            fn init(_: CX![Animal]) -> Option<Animal> {
+                Some(Box::new(Self))
+            }
         }
-    }
-    struct Dog;
-    impl Dog {
-        fn init(_: CX![Animal]) -> Option<Animal> {
-            Some(Box::new(Self))
+        impl AnimalTrait for Cat {
+            fn sound(&mut self, _: CX![Animal], si: ScoreInc) {
+                SCORE!(si);
+            }
         }
-    }
-    impl AnimalTrait for Dog {
-        fn sound(&mut self, _: CX![Animal], si: ScoreInc) {
-            SCORE!(si);
+        struct Dog;
+        impl Dog {
+            fn init(_: CX![Animal]) -> Option<Animal> {
+                Some(Box::new(Self))
+            }
         }
+        impl AnimalTrait for Dog {
+            fn sound(&mut self, _: CX![Animal], si: ScoreInc) {
+                SCORE!(si);
+            }
+        }
+
+        let mut stakker = Stakker::new(Instant::now());
+        let s = &mut stakker;
+        let mut aux = Aux::new(s);
+
+        // This variable can hold any kind of animal
+        let mut animal: ActorOwn<Animal>;
+        animal = actor_of_trait!(s, Animal, Cat::init(), ret_nop!());
+        call!([animal], sound(aux.si()));
+        // Also test other form of macro, with <...>
+        animal = actor_of_trait!(s, Animal, <Dog>::init(), ret_nop!());
+        call!([animal], sound(aux.si()));
+
+        aux.run(s);
+        aux.check_scores();
     }
+);
 
-    let mut stakker = Stakker::new(Instant::now());
-    let s = &mut stakker;
-    let mut aux = Aux::new(s);
+test_fn!(
+    #[should_panic]
+    fn panic_0() {
+        let fwd = fwd_panic!("Test");
+        fwd!([fwd]);
+    }
+);
 
-    // This variable can hold any kind of animal
-    let mut animal: ActorOwn<Animal>;
-    animal = actor_of_trait!(s, Animal, Cat::init(), ret_nop!());
-    call!([animal], sound(aux.si()));
-    // Also test other form of macro, with <...>
-    animal = actor_of_trait!(s, Animal, <Dog>::init(), ret_nop!());
-    call!([animal], sound(aux.si()));
+test_fn!(
+    #[should_panic]
+    fn panic_1() {
+        let ret = ret_panic!("Test");
+        ret!([ret]);
+    }
+);
 
-    aux.run(s);
-    aux.check_scores();
-}
+test_fn!(
+    #[should_panic]
+    fn panic_2() {
+        let fwd = fwd_do!(|()| panic!("Test"));
+        fwd!([fwd]);
+    }
+);
 
-#[test]
-#[should_panic]
-fn panic_0() {
-    let fwd = fwd_panic!("Test");
-    fwd!([fwd]);
-}
+test_fn!(
+    fn panic_2_drop() {
+        // This one doesn't panic
+        let fwd = fwd_do!(|()| panic!("Test"));
+        drop(fwd);
+    }
+);
 
-#[test]
-#[should_panic]
-fn panic_1() {
-    let ret = ret_panic!("Test");
-    ret!([ret]);
-}
+test_fn!(
+    #[should_panic]
+    fn panic_3() {
+        let ret = ret_do!(|_: Option<()>| panic!("Test"));
+        ret!([ret]);
+    }
+);
 
-#[test]
-#[should_panic]
-fn panic_2() {
-    let fwd = fwd_do!(|()| panic!("Test"));
-    fwd!([fwd]);
-}
-
-#[test]
-fn panic_2_drop() {
-    // This one doesn't panic
-    let fwd = fwd_do!(|()| panic!("Test"));
-    drop(fwd);
-}
-
-#[test]
-#[should_panic]
-fn panic_3() {
-    let ret = ret_do!(|_: Option<()>| panic!("Test"));
-    ret!([ret]);
-}
-
-#[test]
-#[should_panic]
-fn panic_3_drop() {
-    // This one panics
-    let ret = ret_do!(|_: Option<()>| panic!("Test"));
-    drop(ret);
-}
+test_fn!(
+    #[should_panic]
+    fn panic_3_drop() {
+        // This one panics
+        let ret = ret_do!(|_: Option<()>| panic!("Test"));
+        drop(ret);
+    }
+);

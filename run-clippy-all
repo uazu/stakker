@@ -1,3 +1,7 @@
 #!/bin/bash
 
-./run-all-feature-comb.pl cargo clippy --no-default-features --features
+./run-feature-combinations | while read FEATURES
+do
+    echo === $FEATURES
+    cargo clippy $FEATURES
+done

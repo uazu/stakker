@@ -4,45 +4,6 @@ die() { echo "ABORT: $*"; exit 1; }
 
 TARGET=${CARGO_TARGET_DIR:-./target}
 
-# This same script is called back with "run-test" argument by
-# run-all-feature-comb.pl
-case "$1" in
-    run-test)
-        # Depending on the Rust version, test executables may be
-        # dumped in $TARGET/debug or $TARGET/debug/deps
-        rm -r $(find $TARGET/debug -name "stakker-*") >/dev/null 2>&1
-
-        # Can't use --no-run because it excludes some of the tests.
-        # Need "link-dead-code" to get all the source (including
-        # source without coverage) to show up.  Need "opt-level=0" or
-        # otherwise "link-dead-code" fails with linking problems.
-        RUSTFLAGS="-C link-dead-code -C codegen-units=1 -C opt-level=0" \
-                 cargo test --no-default-features --features "$2" >kcov/test-$$ 2>&1 ||
-            die "cargo test failed; see kcov/test-$$"
-        rm kcov/test-$$
-
-        set ""
-        set $(find $TARGET/debug -name "stakker-*" -type f -executable)
-        #was: ls $TARGET/debug/stakker-* | egrep 'stakker-[A-Fa-f0-9]+$'
-
-        [ -z "$1" ] && die "Can't find test binary in $TARGET/debug"
-        [ ! -z "$2" ] && die "Found more than one test binary in $TARGET/debug"
-        EXE="$1"
-
-        TESTS=$(echo $(find src -name "*.rs" | fgrep /test | fgrep -v macro_coverage) | perl -pe 's/ /,/g')
-
-        mkdir kcov/out-$$
-        kcov --verify \
-             --include-pattern=stakker/src \
-             --exclude-pattern=$TESTS \
-             kcov/out-$$ $EXE ||
-            die "kcov failed"
-        exit 0;;
-    "") ;;
-    *) die "Invalid argument";;
-esac
-
-
 # Check macro.rs COVERAGE tags
 perl -e '
 die unless open IN, "<src/macros.rs";
@@ -71,7 +32,43 @@ exit 1;
 rm -r kcov >/dev/null 2>&1
 mkdir kcov || die "Can't creat kcov/"
 
-./run-all-feature-comb.pl $0 run-test
+COUNT=1000
+./run-feature-combinations | while read FEATURES
+do
+    ID=${COUNT#1}
+    let COUNT=COUNT+1
+    echo === $ID $FEATURES
+
+    # Depending on the Rust version, test executables may be
+    # dumped in $TARGET/debug or $TARGET/debug/deps
+    rm -r $(find $TARGET/debug -name "stakker-*") >/dev/null 2>&1
+
+    # Can't use --no-run because it excludes some of the tests.
+    # Need "link-dead-code" to get all the source (including
+    # source without coverage) to show up.  Need "opt-level=0" or
+    # otherwise "link-dead-code" fails with linking problems.
+    RUSTFLAGS="-C link-dead-code -C codegen-units=1 -C opt-level=0" \
+             cargo test $FEATURES >kcov/test-$ID 2>&1 ||
+        die "cargo test failed; see kcov/test-$ID"
+    rm kcov/test-$ID
+
+    set ""
+    set $(find $TARGET/debug -name "stakker-*" -type f -executable)
+    #was: ls $TARGET/debug/stakker-* | egrep 'stakker-[A-Fa-f0-9]+$'
+
+    [ -z "$1" ] && die "Can't find test binary in $TARGET/debug"
+    [ ! -z "$2" ] && die "Found more than one test binary in $TARGET/debug"
+    EXE="$1"
+
+    TESTS=$(echo $(find src -name "*.rs" | fgrep /test | fgrep -v macro_coverage) | perl -pe 's/ /,/g')
+
+    mkdir kcov/out-$ID
+    kcov --verify \
+         --include-pattern=stakker/src \
+         --exclude-pattern=$TESTS \
+         kcov/out-$ID $EXE ||
+        die "kcov failed"
+done
 
 echo "=== MERGING reports to kcov/out/ ..."
 mkdir kcov/out

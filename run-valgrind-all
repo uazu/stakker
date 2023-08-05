@@ -19,38 +19,6 @@ while (<>) {
 }'
 }
 
-# This same script is called back from ./run-all-feature-comb.pl
-[ "$1" = "run-test" ] && {
-    if [ "$RUST_TEST_THREADS" = "1" ]
-    then
-        echo "SKIPPING single-threaded test for now.  Need to apply 'workaround-test-threads-issue'."
-        exit 0
-    fi
-
-    # Run cargo test twice.  First builds and tests.  Second skips the
-    # build (already done) and just runs the test under valgrind.  We
-    # only want to valgrind the test, not all the build-related code.
-    cargo test --lib --no-default-features --features "$2" >/dev/null 2>&1 || {
-        # If it fails, repeat and show output, then fail
-        cargo test --lib --no-default-features --features "$2" 2>&1
-        echo FAILED
-        exit 1
-    }
-
-    # --log-file=log/valgrind_%p \
-    # --gen-suppressions=all \
-    # --show-leak-kinds=definite,indirect \
-    valgrind \
-        --tool=memcheck \
-        --trace-children=yes \
-        --leak-check=full \
-        --suppressions=tmp-valgrind-suppressions.txt \
-        --show-leak-kinds=definite \
-        --undef-value-errors=no \
-        cargo test --lib --no-default-features --features "$2" 2>&1 | filter
-    exit 0
-}
-
 cat >tmp-valgrind-suppressions.txt <<EOF
 {
    uninteresting statx problem
@@ -72,7 +40,32 @@ cat >tmp-valgrind-suppressions.txt <<EOF
 }
 EOF
 
-./run-all-feature-comb.pl $0 run-test 2>&1 | tee tmp-valgrind.log
+./run-feature-combinations | while read FEATURES
+do
+    echo === $FEATURES
+
+    # Run cargo test twice.  First builds and tests.  Second skips the
+    # build (already done) and just runs the test under valgrind.  We
+    # only want to valgrind the test, not all the build-related code.
+    cargo test --lib $FEATURES >/dev/null 2>&1 || {
+        # If it fails, repeat and show output, then fail
+        cargo test --lib $FEATURES 2>&1
+        echo FAILED
+        exit 1
+    }
+
+    # --log-file=log/valgrind_%p \
+    # --gen-suppressions=all \
+    # --show-leak-kinds=definite,indirect \
+    valgrind \
+        --tool=memcheck \
+        --trace-children=yes \
+        --leak-check=full \
+        --suppressions=tmp-valgrind-suppressions.txt \
+        --show-leak-kinds=definite \
+        --undef-value-errors=no \
+        cargo test --lib $FEATURES 2>&1 | filter
+done 2>&1 | tee tmp-valgrind.log
 
 rm tmp-valgrind-suppressions.txt
 

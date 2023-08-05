@@ -12,17 +12,18 @@ use std::time::{Duration, Instant};
 // slowly using a huge amount of memory until eventually it crashes
 // trying to allocate even more memory.
 
-#[test]
-#[cfg_attr(miri, ignore)]
-fn run() {
-    let data = std::include_bytes!("timers_corpus.bin");
-    let mut p = &data[..];
-    while !p.is_empty() {
-        let len = ((p[0] as usize) << 8) + (p[1] as usize);
-        fuzz_timers(&p[2..2 + len]);
-        p = &p[2 + len..];
+test_fn!(
+    #[cfg_attr(miri, ignore)]
+    fn run() {
+        let data = std::include_bytes!("timers_corpus.bin");
+        let mut p = &data[..];
+        while !p.is_empty() {
+            let len = ((p[0] as usize) << 8) + (p[1] as usize);
+            fuzz_timers(&p[2..2 + len]);
+            p = &p[2 + len..];
+        }
     }
-}
+);
 
 // Add timers and remove items from queue, checking that all of them
 // come out correctly, and that timing is as expected

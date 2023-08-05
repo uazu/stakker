@@ -1,0 +1,44 @@
+#!/usr/bin/perl -w
+
+my @list;
+push @list, '';
+
+sub add {
+    my @tmp = ();
+    for my $a (@_) {
+        for my $f (@list) {
+            push @tmp, "$f$a";
+        }
+    }
+    @list = @tmp;
+}
+
+if (@ARGV > 0 && $ARGV[0] eq '--max') {
+    add('', 'multi-thread,');
+    add('', 'multi-stakker,');
+    add('', 'logger,');
+    add('', 'no-unsafe-queue,');
+    add('', 'no-unsafe,');
+    add('', 'inline-deferrer,');
+    add('', 'inter-thread,');
+} else {
+    # multi-stakker implies multi-thread; logger is independent
+    add('', 'multi-thread,', 'multi-stakker,logger,');
+
+    # no-unsafe implies no-unsafe-queue
+    add('', 'no-unsafe-queue,', 'no-unsafe,');
+
+    # These features are independent and can be switched together
+    add('', 'inline-deferrer,inter-thread,');
+}
+
+# Sort by length which biases towards testing single features before
+# combined features
+for (sort { length($a) <=> length($b) } @list) {
+    s/,$//;
+    if ($_ eq '') {
+        print("--no-default-features\n");
+    } else {
+        print("--no-default-features --features $_\n");
+    }
+}

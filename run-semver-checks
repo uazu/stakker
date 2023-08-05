@@ -2,23 +2,18 @@
 
 # Install cargo-semver-checks first
 
-# This script is called back from run-all-feature-comb.pl
-if [ "$1" = "callback" ]
-then
-    CMD="$COMMAND"
-    for feature in $2
-    do
-        CMD="$CMD --features $feature"
-    done
-    $CMD
-    exit $?
-fi
-
 if [ -z "$1" ]
 then
-    export COMMAND="cargo semver-checks --only-explicit-features"
+    COMMAND="cargo semver-checks"
 else
-    export COMMAND="cargo semver-checks --baseline-rev $1 --only-explicit-features"
+    COMMAND="cargo semver-checks --baseline-rev $1"
 fi
 
-./run-all-feature-comb.pl ./run-semver-checks callback
+./run-feature-combinations | while read FEATURES
+do
+    echo === $FEATURES
+
+    FEAT="$(echo $FEATURES | perl -pe 's/--no-default-features/--only-explicit-features/; s/,/ --features /g;')"
+
+    $COMMAND $FEAT || exit 1
+done

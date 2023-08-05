@@ -198,18 +198,6 @@
 //! the `stakker_log` crate to log with actor context information.
 //! See [`Stakker::set_logger`].
 //!
-//! Testing features:
-//!
-//! - **test-multi-thread**: This is enabled by default, because
-//! otherwise a plain `cargo test` or crater run test will fail.  It
-//! has the effect of forcing **multi-thread** to be enabled when a
-//! test runs.  This is to work around there being no way to force
-//! `cargo test` to run tests on a single thread without giving it an
-//! extra argument or environment variable.  This feature should be
-//! disabled if you want to be sure that you're testing with exactly
-//! the same features as the main build of your application.  It will
-//! be removed if another solution can be found.
-//!
 //! These are the implementations that are switched, in order of
 //! preference, listing most-preferred first:
 //!
@@ -566,7 +554,7 @@ mod rc {
 #[cfg(all(
     not(feature = "inline-deferrer"),
     not(feature = "multi-stakker"),
-    not(any(feature = "multi-thread", all(test, feature = "test-multi-thread"))),
+    not(feature = "multi-thread"),
     not(feature = "no-unsafe")
 ))]
 mod deferrer {
@@ -580,7 +568,7 @@ mod deferrer {
 #[cfg(all(
     not(feature = "inline-deferrer"),
     not(feature = "multi-stakker"),
-    any(feature = "multi-thread", all(test, feature = "test-multi-thread")),
+    feature = "multi-thread"
 ))]
 mod deferrer {
     mod api;
@@ -603,13 +591,13 @@ mod deferrer {
     not(all(
         not(feature = "inline-deferrer"),
         not(feature = "multi-stakker"),
-        not(any(feature = "multi-thread", all(test, feature = "test-multi-thread"))),
+        not(feature = "multi-thread"),
         not(feature = "no-unsafe")
     )),
     not(all(
         not(feature = "inline-deferrer"),
         not(feature = "multi-stakker"),
-        any(feature = "multi-thread", all(test, feature = "test-multi-thread")),
+        feature = "multi-thread",
     )),
 ))]
 mod deferrer {
@@ -640,19 +628,13 @@ mod queue {
 }
 
 // Cell selection
-#[cfg(all(
-    not(feature = "multi-stakker"),
-    not(any(feature = "multi-thread", all(test, feature = "test-multi-thread")))
-))]
+#[cfg(all(not(feature = "multi-stakker"), not(feature = "multi-thread")))]
 mod cell {
     pub(crate) mod tcell;
     pub(crate) use tcell as cell;
 }
 
-#[cfg(all(
-    not(feature = "multi-stakker"),
-    any(feature = "multi-thread", all(test, feature = "test-multi-thread"))
-))]
+#[cfg(all(not(feature = "multi-stakker"), feature = "multi-thread"))]
 mod cell {
     pub(crate) mod tlcell;
     pub(crate) use tlcell as cell;

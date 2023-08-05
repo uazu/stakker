@@ -1,3 +1,7 @@
 #!/bin/bash
 
-./run-all-feature-comb.pl cargo +1.60 clippy --no-default-features --features
+./run-feature-combinations | while read FEATURES
+do
+    echo === $FEATURES
+    cargo +1.63 clippy $FEATURES
+done

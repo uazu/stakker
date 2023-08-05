@@ -4,6 +4,22 @@ This project follows Rust semantic versioning.
 
 <!-- see keepachangelog.com for format ideas -->
 
+## 0.2.10 (2023-08-06)
+
+- MSRV changed to 1.63 from 1.60, because testing now requires const
+  Mutex::new
+
+### Fixed
+
+Big testing refactor and rework:
+- No longer depend on broken `RUST_TEST_THREADS=1`
+- No longer depend on previous script-based workaround
+- Get rid of old `test-multi-thread` workaround
+- Under `cargo test`, when single-threaded testing is required, run a
+  worker thread to force all tests to run on a single thread
+- However MIRI testing continues to use script-based workaround
+
+
 ## 0.2.9 (2023-07-24)
 
 ### Added

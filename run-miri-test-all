@@ -9,10 +9,70 @@ echo "for undefined behaviour in that queue implementation, unless you use an ol
 echo "nightly.  (It does pass with 2022-07-01 nightlies, though.)"
 echo ""
 
-run() {
-    export MIRIFLAGS=-Zmiri-disable-isolation
-#    ./run-all-feature-comb.pl cargo +nightly miri test --no-default-features --features || exit 1
-    ./run-all-feature-comb.pl ./run-miri-test-all-aux || exit 1
-}
+export MIRIFLAGS=-Zmiri-disable-isolation
 
-run
+./run-feature-combinations | while read FEATURES
+do
+    echo === $FEATURES
+
+    case "$FEATURES" in
+        *no-unsafe*) ;;
+        *)
+            echo "*** SKIPPING test that uses queue/flat.rs because MIRI no longer exposes vtable simulation ***"
+            continue;;
+    esac
+    case "$FEATURES" in
+        *multi-*)
+            # These tests can run in parallel
+            cargo +nightly miri test $FEATURES || exit 1
+            continue;;
+    esac
+
+    # Since 1.67 `RUST_TEST_THREADS=1` no longer runs all tests in a
+    # single thread.  See:
+    # <https://github.com/rust-lang/cargo/issues/11896> and
+    # <https://github.com/rust-lang/rust/issues/104053>.  The general
+    # workaround for this problem is to run a worker thread and send
+    # the tests to that thread to run.  However running a worker
+    # thread makes MIRI complain that we haven't waited for that
+    # thread to finish, and it seems impossible to do that.  So
+    # instead run MIRI tests one at a time using --list and --exact.
+
+    COMMAND="cargo +nightly miri test --lib $FEATURES"
+
+    echo "*** Applying work-around for testing single-threaded tests ***"
+    FLAG_FAILED=/tmp/stakker-run-test-all-aux-$$-flag
+    FLAG_TESTED=/tmp/stakker-run-test-all-aux-$$-tested
+    TMPOUT=/tmp/stakker-run-test-all-aux-$$-out
+    rm -f $FLAG_FAILED >&/dev/null
+    rm -f $FLAG_TESTED >&/dev/null
+    $COMMAND -- --list 2>/dev/null |
+        grep ': test' |
+        perl -pe 's/: test$//;' |
+        while read xx
+        do
+            if $COMMAND -- --exact "$xx" >$TMPOUT 2>&1
+            then
+                grep "test .* [.][.][.]" $TMPOUT || cat $TMPOUT
+            else
+                echo "=== $xx"
+                cat $TMPOUT
+                touch $FLAG_FAILED
+            fi
+            rm $TMPOUT
+            touch $FLAG_TESTED
+        done
+    [ ! -f $FLAG_TESTED ] && {
+        $COMMAND -- --list
+        echo "NO TESTS WERE FOUND.  Check run-miri-test-all script.  Maybe output of --list has changed?"
+        rm -f $FLAG_FAILED >&/dev/null
+        exit 1
+    }
+    rm -f $FLAG_TESTED >&/dev/null
+    [ -f $FLAG_FAILED ] && {
+        rm $FLAG_FAILED
+        exit 1
+    }
+    # Doc-tests are run one-per-process and are unaffected
+    cargo +nightly miri test --doc $FEATURES || exit 1
+done
