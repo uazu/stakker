@@ -5,8 +5,9 @@ use std::marker::PhantomData;
 use std::mem;
 
 thread_local!(
+    #[allow(clippy::thread_local_initializer_can_be_made_const)] // False positive
     static QUEUE: UnsafeCell<FnOnceQueue<Stakker>> = UnsafeCell::new(FnOnceQueue::new());
-    static TASK: Cell<Option<Task>> = Cell::new(None);
+    static TASK: Cell<Option<Task>> = const { Cell::new(None) };
 );
 
 // Use *const to make it !Send and !Sync

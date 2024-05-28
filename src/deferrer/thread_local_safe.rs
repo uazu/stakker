@@ -6,7 +6,7 @@ use std::mem;
 
 thread_local!(
     static QUEUE: RefCell<FnOnceQueue<Stakker>> = RefCell::new(FnOnceQueue::new());
-    static TASK: Cell<Option<Task>> = Cell::new(None);
+    static TASK: Cell<Option<Task>> = const { Cell::new(None) };
 );
 
 // Use *const to make it !Send and !Sync

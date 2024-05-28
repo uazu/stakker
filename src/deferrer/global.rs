@@ -83,6 +83,9 @@ impl DeferrerAux {
         // Safety: The running thread has exclusive access to TASK;
         // see above.  The operation doesn't call into any method
         // which might also attempt to access the same global.
-        unsafe { mem::replace(&mut TASK, task) }
+        //
+        // This used to be `&mut TASK`, but now we have to jump
+        // through some hoops.
+        unsafe { mem::replace(&mut *std::ptr::addr_of_mut!(TASK), task) }
     }
 }

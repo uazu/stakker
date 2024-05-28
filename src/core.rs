@@ -637,6 +637,15 @@ impl Core {
         self.anymap.insert(TypeId::of::<T>(), Box::new(val));
     }
 
+    /// Remove a value from the `anymap` according to its type.  After
+    /// this call, a call to [`Core::anymap_get`] for this type will
+    /// panic, and a call to [`Core::anymap_try_get`] will return
+    /// `None`.
+    #[inline]
+    pub fn anymap_unset<T: Clone + 'static>(&mut self) {
+        self.anymap.remove(&TypeId::of::<T>());
+    }
+
     /// Gets a clone of a value from the Stakker `anymap`.  This is
     /// intended to be used to access certain global instances, for
     /// example the I/O poll implementation that this Stakker is

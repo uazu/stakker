@@ -39,6 +39,10 @@ test_fn!(
         assert_eq!(24, *s.anymap_get::<Rc<u8>>());
         assert_eq!(-17, *s.anymap_get::<Rc<i8>>());
 
+        s.anymap_unset::<Rc<u8>>();
+        assert_eq!(None, s.anymap_try_get::<Rc<u8>>());
+        assert_eq!(-17, *s.anymap_get::<Rc<i8>>());
+
         assert_eq!(None, s.anymap_try_get::<Rc<u16>>());
         assert_eq!(None, s.anymap_try_get::<Rc<i16>>());
     }

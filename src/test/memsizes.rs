@@ -6,8 +6,11 @@
 use crate::{actor_new, ret_nop, ret_panic, ret_to, ActorOwn, Stakker, StopCause, CX};
 use std::time::Instant;
 
+#[allow(dead_code)]
 struct Actor0([u8; 0]);
+#[allow(dead_code)]
 struct Actor1000([u8; 1000]);
+#[allow(dead_code)]
 struct Actor2000([u8; 2000]);
 
 impl Actor0 {

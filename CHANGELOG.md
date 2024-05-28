@@ -4,6 +4,15 @@ This project follows Rust semantic versioning.
 
 <!-- see keepachangelog.com for format ideas -->
 
+## 0.2.11 (2024-05-28)
+
+- Fixups for Rust 1.78 warnings and clippy recommendations
+
+### Added
+
+- `Core::anymap_unset` to clear a stored anymap value
+
+
 ## 0.2.10 (2023-08-06)
 
 - MSRV changed to 1.63 from 1.60, because testing now requires const

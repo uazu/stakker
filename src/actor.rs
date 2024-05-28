@@ -183,6 +183,7 @@ impl<A: 'static> Drop for ActorOwn<A> {
 /// [`ActorOwn::anon`]: struct.ActorOwn.html#method.anon
 /// [`Fwd`]: struct.Fwd.html
 /// [`actor_of_trait!`]: macro.actor_of_trait.html
+#[allow(dead_code)]
 pub struct ActorOwnAnon(Box<dyn ActorOwnAnonTrait>);
 trait ActorOwnAnonTrait {}
 impl<T: 'static> ActorOwnAnonTrait for ActorOwn<T> {}
