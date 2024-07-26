@@ -377,14 +377,14 @@ macro_rules! generic_call {
          let cx: &mut $crate::Cx<'_, Self> = $cx;  // Expecting Cx<Self> ref
          let this = cx.this().clone();
          let core = $cx.access_core();
-         $crate::$handler!($hargs core; move |s| this.apply(s, cb));
+         $crate::$handler!($hargs core; move |s| this.apply(s, cb))
      }};
     ($handler:ident $hargs:tt $access:ident;
      [$core:expr], |$stakker:pat_param| $body:expr) => {{
          $crate::COVERAGE!(generic_call_1);
          let core = $core.$access();  // Expecting Core, Cx or Stakker ref
          let cb = move |$stakker : &mut $crate::Stakker| $body;
-         $crate::$handler!($hargs core; cb);
+         $crate::$handler!($hargs core; cb)
      }};
     ($handler:ident $hargs:tt $access:ident;
      [$cx:expr], move | $($x:tt)*) => {{
@@ -664,7 +664,7 @@ macro_rules! after {
 macro_rules! after_aux {
     (($dur:ident) $core:ident; $cb:expr) => {{
         $crate::COVERAGE!(after_1);
-        $core.after($dur, $cb);
+        $core.after($dur, $cb)
     }};
 }
 
