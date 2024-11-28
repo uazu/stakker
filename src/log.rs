@@ -25,32 +25,32 @@ use std::str::FromStr;
 /// Notes:
 ///
 /// - The `key` argument is normally `Some(key)`.  However where this
-/// value is a member of an array the key must be `None`.
+///   value is a member of an array the key must be `None`.
 ///
 /// - All signed integer types from `i8` up to `i64` are passed to
-/// `kv_i64`, and all unsigned integer types from `u8` up to `u64` are
-/// passed to `kv_u64`.
+///   `kv_i64`, and all unsigned integer types from `u8` up to `u64` are
+///   passed to `kv_u64`.
 ///
 /// - `kv_null` may be used to represent a key with presence but no
-/// value, i.e. a JSON `null` or Rust unit `()` value.  It might be
-/// converted into an empty-string or `true` value depending on the
-/// logger if presence values are not supported downstream.
+///   value, i.e. a JSON `null` or Rust unit `()` value.  It might be
+///   converted into an empty-string or `true` value depending on the
+///   logger if presence values are not supported downstream.
 ///
 /// - Anything that needs to be formatted as a string, e.g. `Display`
-/// or `Debug` types, is passed through to `kv_fmt` using
-/// `format_args!`.  This way the logger can format it directly into
-/// the output, avoiding the allocations that would occur if you used
-/// `format!`.
+///   or `Debug` types, is passed through to `kv_fmt` using
+///   `format_args!`.  This way the logger can format it directly into
+///   the output, avoiding the allocations that would occur if you used
+///   `format!`.
 ///
 /// - Maps are introduced with a call to `kv_map`, then zero or more
-/// `kv_*` calls for the contents of that map, then a call to
-/// `kv_mapend` to close the map and continue at the original level.
+///   `kv_*` calls for the contents of that map, then a call to
+///   `kv_mapend` to close the map and continue at the original level.
 ///
 /// - Arrays are introduced with a call to `kv_arr`, then zero or more
-/// `kv_*` calls for the contents of the array, then a call to
-/// `kv_arrend` to close the array and continue at the original level.
-/// The `key` argument on the `kv_*` calls within an array should be
-/// `None`.
+///   `kv_*` calls for the contents of the array, then a call to
+///   `kv_arrend` to close the array and continue at the original level.
+///   The `key` argument on the `kv_*` calls within an array should be
+///   `None`.
 ///
 /// For maps and arrays, unlimited levels of nesting may be
 /// represented.  The same key must be passed to both `kv_map` and

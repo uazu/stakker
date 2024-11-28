@@ -42,6 +42,7 @@ impl DeferrerAux {
         // TASK.  QUEUE is initialised only once, and this constructor
         // guarantees that it is initialised before use.
         let tid = std::thread::current().id();
+        #[allow(static_mut_refs)]
         unsafe {
             ONCE.call_once(|| {
                 LOCKED_TO_THREAD = Some(tid);
@@ -63,6 +64,7 @@ impl DeferrerAux {
         // which might also attempt to access the same global.
         // This code cannot be called before QUEUE is initialised.
         unsafe {
+            #[allow(static_mut_refs)]
             mem::swap(queue, QUEUE.assume_init_mut());
         }
     }
@@ -74,6 +76,7 @@ impl DeferrerAux {
         // which might also attempt to access the same global.
         // This code cannot be called before QUEUE is initialised.
         unsafe {
+            #[allow(static_mut_refs)]
             QUEUE.assume_init_mut().push(f);
         };
     }

@@ -63,7 +63,7 @@ pub struct FixedTimerKey {
 #[derive(Copy, Clone, Eq, PartialEq, Default, Debug)]
 pub struct MaxTimerKey {
     slot: u32, // Slot number
-    gen: u32,  // Generation
+    gnn: u32,  // Generation
 }
 
 /// Timer key for a Min timer
@@ -89,7 +89,7 @@ pub struct MaxTimerKey {
 #[derive(Copy, Clone, Eq, PartialEq, Default, Debug)]
 pub struct MinTimerKey {
     slot: u32, // Slot number
-    gen: u32,  // Generation
+    gnn: u32,  // Generation
 }
 
 // `Instant` converted cheaply into a `u64` by reducing the accuracy.
@@ -213,7 +213,7 @@ enum VarItem {
 }
 
 struct VarSlot {
-    gen: u32, // Generation, incremented on delete
+    gnn: u32, // Generation, incremented on delete
     item: VarItem,
 }
 
@@ -314,7 +314,7 @@ impl<S: 'static> Timers<S> {
                 _ => panic!("Timers: var_free pointed to slot that wasn't free"),
             };
             slot.item = item;
-            (i, slot.gen)
+            (i, slot.gnn)
         } else {
             let i = self.var.len();
             if i >= 0x8000_0000 {
@@ -322,14 +322,14 @@ impl<S: 'static> Timers<S> {
             }
             // Start at gen==1 so that `Default` on keys doesn't match
             // anything
-            self.var.push(VarSlot { gen: 1, item });
+            self.var.push(VarSlot { gnn: 1, item });
             (i as u32, 1)
         }
     }
 
     fn free_slot(&mut self, i: u32) {
         let slot = &mut self.var[i as usize];
-        slot.gen = slot.gen.wrapping_add(1).max(1); // Avoid gen==0, reserved for Default
+        slot.gnn = slot.gnn.wrapping_add(1).max(1); // Avoid gen==0, reserved for Default
         if let VarItem::Free(_) = slot.item {
             panic!("Timers: deleting slot that was already free");
         }
@@ -364,7 +364,7 @@ impl<S: 'static> Timers<S> {
             let mk = self.add_max(expiry_time, bfn);
             return FixedTimerKey {
                 slot: mk.slot,
-                gen_or_time: mk.gen,
+                gen_or_time: mk.gnn,
             };
         }
 
@@ -399,7 +399,7 @@ impl<S: 'static> Timers<S> {
         if fk.slot < 0x8000_0000 {
             self.del_max(MaxTimerKey {
                 slot: fk.slot,
-                gen: fk.gen_or_time,
+                gnn: fk.gen_or_time,
             })
         } else {
             self.queue
@@ -420,9 +420,9 @@ impl<S: 'static> Timers<S> {
     pub(crate) fn add_max(&mut self, expiry_time: Instant, bfn: BoxedFnOnce<S>) -> MaxTimerKey {
         let expiry = Time::new_ceil(expiry_time, self.t0);
         let curr = expiry.max(self.now.inc()).min(self.now.add_secs(0x7FFF));
-        let (slot, gen) = self.alloc_slot(VarItem::Max(VarTimer { expiry, curr }));
+        let (slot, gnn) = self.alloc_slot(VarItem::Max(VarTimer { expiry, curr }));
         self.queue.insert(TimerKey::new(curr.wt(), slot), bfn);
-        MaxTimerKey { slot, gen }
+        MaxTimerKey { slot, gnn }
     }
 
     /// Modify a Max timer.  This is a quick operation.  Returns:
@@ -430,7 +430,7 @@ impl<S: 'static> Timers<S> {
     /// or was deleted or never existed)
     pub(crate) fn mod_max(&mut self, mk: MaxTimerKey, expiry_time: Instant) -> bool {
         if let Some(slot) = self.var.get_mut(mk.slot as usize) {
-            if slot.gen == mk.gen {
+            if slot.gnn == mk.gnn {
                 if let VarItem::Max(ref mut vt) = slot.item {
                     let expiry = Time::new_ceil(expiry_time, self.t0);
                     vt.expiry = vt.expiry.max(expiry);
@@ -445,7 +445,7 @@ impl<S: 'static> Timers<S> {
     /// longer exists (i.e. it expired or was deleted)
     pub(crate) fn del_max(&mut self, mk: MaxTimerKey) -> bool {
         if let Some(slot) = self.var.get_mut(mk.slot as usize) {
-            if slot.gen == mk.gen {
+            if slot.gnn == mk.gnn {
                 if let VarItem::Max(ref mut vt) = slot.item {
                     self.queue.remove(&TimerKey::new(vt.curr.wt(), mk.slot));
                     self.free_slot(mk.slot);
@@ -459,7 +459,7 @@ impl<S: 'static> Timers<S> {
     // Check whether a max timer is still active
     pub(crate) fn max_is_active(&self, mk: MaxTimerKey) -> bool {
         if let Some(slot) = self.var.get(mk.slot as usize) {
-            slot.gen == mk.gen
+            slot.gnn == mk.gnn
         } else {
             false
         }
@@ -482,9 +482,9 @@ impl<S: 'static> Timers<S> {
             self.now.inc(),
             expiry.max(self.now.inc()).min(self.now.add_secs(0x7FFF)),
         );
-        let (slot, gen) = self.alloc_slot(VarItem::Min(VarTimer { expiry, curr }));
+        let (slot, gnn) = self.alloc_slot(VarItem::Min(VarTimer { expiry, curr }));
         self.queue.insert(TimerKey::new(curr.wt(), slot), bfn);
-        MinTimerKey { slot, gen }
+        MinTimerKey { slot, gnn }
     }
 
     /// Modify a Min timer.  This is a quick operation.  Returns:
@@ -493,7 +493,7 @@ impl<S: 'static> Timers<S> {
     pub(crate) fn mod_min(&mut self, mk: MinTimerKey, expiry_time: Instant) -> bool {
         let expiry = Time::new_ceil(expiry_time, self.t0);
         if let Some(slot) = self.var.get_mut(mk.slot as usize) {
-            if slot.gen == mk.gen {
+            if slot.gnn == mk.gnn {
                 if let VarItem::Min(ref mut vt) = slot.item {
                     if expiry < vt.expiry {
                         vt.expiry = expiry;
@@ -521,7 +521,7 @@ impl<S: 'static> Timers<S> {
     /// longer exists (i.e. it expired or was deleted)
     pub(crate) fn del_min(&mut self, mk: MinTimerKey) -> bool {
         if let Some(slot) = self.var.get_mut(mk.slot as usize) {
-            if slot.gen == mk.gen {
+            if slot.gnn == mk.gnn {
                 if let VarItem::Min(ref vt) = slot.item {
                     self.queue.remove(&TimerKey::new(vt.curr.wt(), mk.slot));
                     self.free_slot(mk.slot);
@@ -535,7 +535,7 @@ impl<S: 'static> Timers<S> {
     // Check whether a min timer is still active
     pub(crate) fn min_is_active(&self, mk: MinTimerKey) -> bool {
         if let Some(slot) = self.var.get(mk.slot as usize) {
-            slot.gen == mk.gen
+            slot.gnn == mk.gnn
         } else {
             false
         }
@@ -560,7 +560,7 @@ fn rounded_75point(t0: Time, t1: Time) -> Time {
     // gap of 1s (0x10000) gives max rounding of 0x1FFF, which is max
     // 125ms.  Or gap of 0.999s (0xFF??) gives rounding of 0x0FFF,
     // which is max 62ms (this is the smallest rounding value).
-    let round = u64::max_value() >> gap.leading_zeros() >> 4;
+    let round = u64::MAX >> gap.leading_zeros() >> 4;
     let mut rv = ((p75 - 1) | round) + 1;
     if (rv & 0xFFFF) >= 61036 {
         rv = (rv & !0xFFFF) + 0x10000;

@@ -3,7 +3,7 @@
 use crate::{
     actor, actor_new, actor_of_trait, after, at, call, fwd, fwd_do, fwd_nop, fwd_panic, fwd_to,
     idle, lazy, ret, ret_do, ret_nop, ret_panic, ret_shutdown, ret_some_do, ret_some_to, ret_to,
-    timer_max, timer_min, Actor, ActorOwn, Ret, Stakker, StopCause, CX,
+    timer_max, timer_min, Actor, ActorOwn, FixedTimerKey, Ret, Stakker, StopCause, CX,
 };
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -356,8 +356,8 @@ test_fn!(
         fwd!([fwd], aux.si());
         idle!([a, s], check(aux.si()));
         lazy!([a, s], check(aux.si()));
-        after!(Duration::from_secs(1), [a, s], check(aux.si()));
-        at!(s.now() + Duration::from_secs(3), [a, s], check(aux.si()));
+        let _: FixedTimerKey = after!(Duration::from_secs(1), [a, s], check(aux.si()));
+        let _: FixedTimerKey = at!(s.now() + Duration::from_secs(3), [a, s], check(aux.si()));
 
         let mut key = Default::default();
         timer_max!(

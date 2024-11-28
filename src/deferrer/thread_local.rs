@@ -5,7 +5,7 @@ use std::marker::PhantomData;
 use std::mem;
 
 thread_local!(
-    #[allow(clippy::thread_local_initializer_can_be_made_const)] // False positive
+    #[allow(clippy::missing_const_for_thread_local)]
     static QUEUE: UnsafeCell<FnOnceQueue<Stakker>> = UnsafeCell::new(FnOnceQueue::new());
     static TASK: Cell<Option<Task>> = const { Cell::new(None) };
 );

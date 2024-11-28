@@ -51,18 +51,18 @@ struct QueuesInner<O: Send + Sync + 'static, I: Send + Sync + 'static> {
 /// Cleanup is handled as follows:
 ///
 /// - If the thread terminates normally or panics, then the underlying
-/// [`Waker`] notifies the main thread and `fwd_term` is called with
-/// the panic error, or `None` if there was no panic.  This handler
-/// can discard the [`PipedThread`] instance to complete the cleanup,
-/// and start a new thread if necessary.
+///   [`Waker`] notifies the main thread and `fwd_term` is called with
+///   the panic error, or `None` if there was no panic.  This handler
+///   can discard the [`PipedThread`] instance to complete the cleanup,
+///   and start a new thread if necessary.
 ///
 /// - If the [`PipedThread`] instance is dropped in the main thread,
-/// then a **cancel** flag is set which the thread will notice next
-/// time it tries to send or receive data.  The thread should then
-/// terminate.  So if the [`PipedThread`] instance is kept within the
-/// same actor that is handling the incoming data, then this takes
-/// care of thread cleanup automatically if the actor fails
-/// unexpectedly.
+///   then a **cancel** flag is set which the thread will notice next
+///   time it tries to send or receive data.  The thread should then
+///   terminate.  So if the [`PipedThread`] instance is kept within the
+///   same actor that is handling the incoming data, then this takes
+///   care of thread cleanup automatically if the actor fails
+///   unexpectedly.
 ///
 /// [`PipedLink::recv`]: ../sync/struct.PipedLink.html#method.recv
 /// [`PipedLink::send`]: ../sync/struct.PipedLink.html#method.send

@@ -171,32 +171,32 @@
 //! Features enabled by default:
 //!
 //! - **inter-thread**: Enables inter-thread operations such as
-//! [`Waker`] and [`PipedThread`].
+//!   [`Waker`] and [`PipedThread`].
 //!
 //! Optional features:
 //!
 //! - **no-unsafe-queue**: Disable the fast FnOnce queue implementation,
-//! which uses unsafe code.  Uses a boxed queue instead.
+//!   which uses unsafe code.  Uses a boxed queue instead.
 //!
 //! - **no-unsafe**: Disable all unsafe code within this crate, at
-//! some cost in time and memory.
+//!   some cost in time and memory.
 //!
 //! - **multi-thread**: Specifies that more than one **Stakker** will
-//! run in the process, at most one **Stakker** per thread.  This
-//! disables some optimisations that require process-wide access.
+//!   run in the process, at most one **Stakker** per thread.  This
+//!   disables some optimisations that require process-wide access.
 //!
 //! - **multi-stakker**: Specifies that more than one **Stakker** may
-//! need to run in the same thread.  This disables optimisations that
-//! require either process-wide or thread-local access.
+//!   need to run in the same thread.  This disables optimisations
+//!   that require either process-wide or thread-local access.
 //!
 //! - **inline-deferrer**: Forces use of the inline [`Deferrer`]
-//! implementation instead of using the global or thread-local
-//! implementation.  Possibly useful if thread-locals are very slow.
+//!   implementation instead of using the global or thread-local
+//!   implementation.  Possibly useful if thread-locals are very slow.
 //!
 //! - **logger**: Enables **Stakker**'s core logging feature, which
-//! logs actor startup and termination, and which allows macros from
-//! the `stakker_log` crate to log with actor context information.
-//! See [`Stakker::set_logger`].
+//!   logs actor startup and termination, and which allows macros from
+//!   the `stakker_log` crate to log with actor context information.
+//!   See [`Stakker::set_logger`].
 //!
 //! These are the implementations that are switched, in order of
 //! preference, listing most-preferred first:
@@ -204,25 +204,25 @@
 //! ### Cell type
 //!
 //! - `TCell`: Best performance, but only allows a single **Stakker**
-//! per process
+//!   per process
 //!
 //! - `TLCell`: Best performance, but uses thread-locals at
-//! **Stakker** creation time and only allows a single **Stakker** per
-//! thread
+//!   **Stakker** creation time and only allows a single **Stakker** per
+//!   thread
 //!
 //! - `QCell`: Allows many **Stakker** instances per thread at some
-//! cost in time and memory
+//!   cost in time and memory
 //!
 //! ### Deferrer
 //!
 //! - Global deferrer: Uses a global variable to find the [`Deferrer`]
 //!
 //! - Thread-local deferrer: Uses a thread-local to find the
-//! [`Deferrer`], with safe and unsafe variants
+//!   [`Deferrer`], with safe and unsafe variants
 //!
 //! - Inline deferrer: Keeps references to the [`Deferrer`] in all
-//! places where it is needed, with safe and unsafe variants.  In
-//! particular this adds a `usize` to all actors.
+//!   places where it is needed, with safe and unsafe variants.  In
+//!   particular this adds a `usize` to all actors.
 //!
 //! ### Actor ref-counting
 //!
@@ -233,8 +233,8 @@
 //! ### Call queues
 //!
 //! - Fast `FnOnce` queue: Appends `FnOnce` closures directly to a
-//! flat memory buffer.  Gives best performance, but uses `unsafe`
-//! code.
+//!   flat memory buffer.  Gives best performance, but uses `unsafe`
+//!   code.
 //!
 //! - Boxed queue: Stores closures indirectly by boxing them
 //!

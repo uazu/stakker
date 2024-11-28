@@ -294,7 +294,7 @@ mod hvec {
     #[inline]
     unsafe fn align(p: *mut u8, pow2: usize) -> *mut u8 {
         let inc = (pow2 - 1) & !((p as usize).wrapping_sub(1));
-        p.add(inc)
+        unsafe { p.add(inc) }
     }
 
     #[inline]
@@ -419,16 +419,16 @@ mod hvec {
         phantomdata: PhantomData<&'a ()>,
     }
 
-    impl<'a> Drain<'a> {
+    impl Drain<'_> {
         #[inline]
         pub unsafe fn next_vp(&mut self) -> Option<VP> {
             if self.pos < self.end {
                 let p = self.pos;
-                self.pos = p.add(mem::size_of::<VP>());
+                self.pos = unsafe { p.add(mem::size_of::<VP>()) };
                 debug_assert!(self.pos <= self.end);
                 debug_assert_eq!(0, (p as usize) % mem::align_of::<VP>());
                 #[allow(clippy::cast_ptr_alignment)]
-                Some(*(p as *mut VP))
+                Some(unsafe { *(p as *mut VP) })
             } else {
                 None
             }
@@ -437,8 +437,8 @@ mod hvec {
         // This assumes that the item definitely exists on the queue
         #[inline]
         pub unsafe fn next_unchecked(&mut self, layout: Layout) -> *mut () {
-            let p = align(self.pos, layout.align());
-            self.pos = align(p.add(layout.size()), mem::align_of::<VP>());
+            let p = unsafe { align(self.pos, layout.align()) };
+            self.pos = unsafe { align(p.add(layout.size()), mem::align_of::<VP>()) };
             debug_assert!(self.pos <= self.end);
             debug_assert_eq!(0, (p as usize) % layout.align());
             p as *mut ()
@@ -481,11 +481,11 @@ where
     F: FnOnce(&mut S),
 {
     unsafe fn call(&mut self, c: &mut S) {
-        let cb = std::ptr::read(&self.cb);
+        let cb = unsafe { std::ptr::read(&self.cb) };
         cb(c);
     }
     unsafe fn drop(&mut self) {
-        std::ptr::drop_in_place(&mut self.cb);
+        unsafe { std::ptr::drop_in_place(&mut self.cb) };
     }
 }
 

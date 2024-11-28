@@ -11,11 +11,11 @@
 //! # Unbounded channels
 //!
 //! - For receiving messages into a **Stakker** thread via an
-//! unbounded queue, use [`Channel`].
+//!   unbounded queue, use [`Channel`].
 //!
 //! - For sending messages to another thread via an unbounded channel,
-//! use whatever unbounded channel is supported by the runtime of that
-//! thread, for example `tokio::sync::mpsc::unbounded_channel()`.
+//!   use whatever unbounded channel is supported by the runtime of that
+//!   thread, for example `tokio::sync::mpsc::unbounded_channel()`.
 //!
 //! # Bounded channels
 //!
@@ -23,23 +23,23 @@
 //! issue if this is required.
 //!
 //! - For a bounded receiving channel, it would be straightforward to
-//! wrap the native bounded channel of the sending runtime with some
-//! code to use a [`Waker`] to wake **Stakker** to receive the
-//! messages.
+//!   wrap the native bounded channel of the sending runtime with some
+//!   code to use a [`Waker`] to wake **Stakker** to receive the
+//!   messages.
 //!
 //! - For a bounded sending channel, it requires that the other
-//! runtime supports some means of calling a [`Waker`] when the
-//! channel has free space.  Possibly this could also be done with a
-//! wrapper.
+//!   runtime supports some means of calling a [`Waker`] when the
+//!   channel has free space.  Possibly this could also be done with a
+//!   wrapper.
 //!
 //! - Alternatively bounded channels could be layered on top of
-//! unbounded channels by doing some form of token exchange (like
-//! token ring), i.e. a sender uses up one of its logical tokens to
-//! send, and the logical token has to be returned before it can be
-//! used to send again.  This just means keeping a count of tokens and
-//! having certain messages logically pass a token one way or the
-//! other.  A limited number of tokens would be introduced into the
-//! system on initialisation.
+//!   unbounded channels by doing some form of token exchange (like
+//!   token ring), i.e. a sender uses up one of its logical tokens to
+//!   send, and the logical token has to be returned before it can be
+//!   used to send again.  This just means keeping a count of tokens and
+//!   having certain messages logically pass a token one way or the
+//!   other.  A limited number of tokens would be introduced into the
+//!   system on initialisation.
 //!
 //! # Worker threads
 //!

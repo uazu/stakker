@@ -454,13 +454,13 @@ macro_rules! generic_call_prep {
 /// - `[cx]`: This is used for calls to the same actor
 ///
 /// - `[actor]`: This is used for calls to another actor.  The call is
-/// made through the actor's built-in [`Deferrer`].
+///   made through the actor's built-in [`Deferrer`].
 ///
 /// - `[actor, cx]` or `[actor, core]`: This may also be used instead
-/// of `[actor]`.  The call is made via [`Core`], which might be
-/// slightly faster if the [`Deferrer`] instances are being inlined,
-/// but otherwise gives no advantage compared to the plain `[actor]`
-/// form.
+///   of `[actor]`.  The call is made via [`Core`], which might be
+///   slightly faster if the [`Deferrer`] instances are being inlined,
+///   but otherwise gives no advantage compared to the plain `[actor]`
+///   form.
 ///
 /// ```ignore
 /// // Call a method in this actor or in another actor
@@ -555,8 +555,8 @@ macro_rules! call_aux {
 /// - `[cx]`: This is used for calls to the same actor
 ///
 /// - `[actor, cx]` or `[actor, core]`: This is used for calls to
-/// another actor.  The second argument is used to get access to
-/// [`Core`] which is used to submit the call to the correct queue.
+///   another actor.  The second argument is used to get access to
+///   [`Core`] which is used to submit the call to the correct queue.
 ///
 /// ```ignore
 /// // Call a method in this actor or in another actor

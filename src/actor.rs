@@ -386,12 +386,12 @@ impl<A> Actor<A> {
         if cfg!(feature = "logger") {
             match died {
                 StopCause::Stopped => core.log_span_close(self.id(), format_args!(""), |_| {}),
-                StopCause::Failed(ref e) => {
+                StopCause::Failed(e) => {
                     core.log_span_close(self.id(), format_args!("{}", e), |out| {
                         out.kv_null(Some("failed"))
                     })
                 }
-                StopCause::Killed(ref e) => {
+                StopCause::Killed(e) => {
                     core.log_span_close(self.id(), format_args!("{}", e), |out| {
                         out.kv_null(Some("killed"))
                     })
@@ -695,7 +695,7 @@ impl<'a, A> Cx<'a, A> {
     }
 }
 
-impl<'a, A> Deref for Cx<'a, A> {
+impl<A> Deref for Cx<'_, A> {
     type Target = Core;
 
     fn deref(&self) -> &Core {
@@ -703,7 +703,7 @@ impl<'a, A> Deref for Cx<'a, A> {
     }
 }
 
-impl<'a, A> DerefMut for Cx<'a, A> {
+impl<A> DerefMut for Cx<'_, A> {
     fn deref_mut(&mut self) -> &mut Core {
         self.core
     }

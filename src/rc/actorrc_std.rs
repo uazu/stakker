@@ -96,13 +96,13 @@ impl<A> ActorRc<A> {
     }
     pub fn borrow_ready<'a>(&'a self, o: &'a mut ActorCellOwner) -> Option<&'a mut A> {
         match o.rw(&self.0.inner) {
-            Inner::Ready(ref mut val) => Some(val),
+            Inner::Ready(val) => Some(val),
             _ => None,
         }
     }
     pub fn borrow_prep<'a>(&'a self, o: &'a mut ActorCellOwner) -> Option<&'a mut Prep> {
         match o.rw(&self.0.inner) {
-            Inner::Prep(ref mut prep) => Some(prep),
+            Inner::Prep(prep) => Some(prep),
             _ => None,
         }
     }

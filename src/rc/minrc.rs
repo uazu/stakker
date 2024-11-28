@@ -80,7 +80,7 @@ impl<T: ?Sized> Drop for MinRc<T> {
         let (count, went_to_zero) = match rcbox.count.get() {
             1 => (0, true),
             0 => (0, false),
-            std::usize::MAX => (std::usize::MAX, false),
+            usize::MAX => (usize::MAX, false),
             v => (v - 1, false),
         };
         rcbox.count.replace(count);
