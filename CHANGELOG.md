@@ -4,6 +4,20 @@ This project follows Rust semantic versioning.
 
 <!-- see keepachangelog.com for format ideas -->
 
+## 0.2.12 (2025-03-11)
+
+- Fixups for Rust 1.85 warnings and clippy recommendations.  In
+  particular certain safe use of `static mut` is now discouraged
+  (because it's too easy for beginners to use wrongly) and requires
+  the warning to be disabled.
+
+### Fixed
+
+- `at!` and `after!` weren't returning `FixedTimerKey` as documented.
+  Thanks to [Deven Speyrer](https://github.com/dspeyrer) for providing
+  the PR to fix this issue.
+
+
 ## 0.2.11 (2024-05-28)
 
 - Fixups for Rust 1.78 warnings and clippy recommendations
