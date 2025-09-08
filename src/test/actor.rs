@@ -1,6 +1,7 @@
 use crate::actor::StringError;
+use crate::time::Instant;
 use crate::*;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 test_fn!(
     fn actor_termination() {
@@ -79,29 +80,29 @@ test_fn!(
 
         // Test stop and stop! from init
         macro_rules! test_init_stopped {
-        ($($call:tt)+) => {
-            let _a = actor!(s, $($call)+, ret_shutdown!(s));
-            assert!(matches!(s.shutdown_reason(), None));
-            s.run(now, false);
-            assert!(matches!(s.shutdown_reason(), Some(StopCause::Stopped)));
-        };
-    }
+            ($($call:tt)+) => {
+                let _a = actor!(s, $($call)+, ret_shutdown!(s));
+                assert!(matches!(s.shutdown_reason(), None));
+                s.run(now, false);
+                assert!(matches!(s.shutdown_reason(), Some(StopCause::Stopped)));
+            };
+        }
         test_init_stopped!(Test::init_stop_1());
         test_init_stopped!(Test::init_stop_2());
 
         // Test fail/fail_str/fail_string/fail! from init
         macro_rules! test_init_failed {
-        // Args backwards due to needing a TT+
-        ($expect:expr; $($call:tt)+) => {
-            let _a = actor!(s, $($call)+, ret_shutdown!(s));
-            assert!(matches!(s.shutdown_reason(), None));
-            s.run(now, false);
-            match s.shutdown_reason() {
-                Some(StopCause::Failed(e)) => assert_eq!($expect, format!("{}", e)),
-                cause => panic!("Unexpected shutdown reason: {:?}", cause),
-            }
-        };
-    }
+            // Args backwards due to needing a TT+
+            ($expect:expr; $($call:tt)+) => {
+                let _a = actor!(s, $($call)+, ret_shutdown!(s));
+                assert!(matches!(s.shutdown_reason(), None));
+                s.run(now, false);
+                match s.shutdown_reason() {
+                    Some(StopCause::Failed(e)) => assert_eq!($expect, format!("{}", e)),
+                    cause => panic!("Unexpected shutdown reason: {:?}", cause),
+                }
+            };
+        }
         test_init_failed!("TEST fail"; Test::init_fail());
         test_init_failed!("TEST fail_str"; Test::init_fail_str());
         test_init_failed!("TEST fail_string"; Test::init_fail_string());
@@ -111,31 +112,31 @@ test_fn!(
 
         // Test stop from method
         macro_rules! test_stopped {
-        ($($call:tt)+) => {
-            let a = actor!(s, Test::init(), ret_shutdown!(s));
-            call!([a], $($call)+);
-            assert!(matches!(s.shutdown_reason(), None));
-            s.run(now, false);
-            assert!(matches!(s.shutdown_reason(), Some(StopCause::Stopped)));
-        };
-    }
+            ($($call:tt)+) => {
+                let a = actor!(s, Test::init(), ret_shutdown!(s));
+                call!([a], $($call)+);
+                assert!(matches!(s.shutdown_reason(), None));
+                s.run(now, false);
+                assert!(matches!(s.shutdown_reason(), Some(StopCause::Stopped)));
+            };
+        }
         test_stopped!(do_stop_1());
         test_stopped!(do_stop_2());
 
         // Test fail from method
         macro_rules! test_failed {
-        // Args backwards due to needing a TT+
-        ($expect:expr; $($call:tt)+) => {
-            let a = actor!(s, Test::init(), ret_shutdown!(s));
-            call!([a], $($call)+);
-            assert!(matches!(s.shutdown_reason(), None));
-            s.run(now, false);
-            match s.shutdown_reason() {
-                Some(StopCause::Failed(e)) => assert_eq!($expect, format!("{}", e)),
-                cause => panic!("Unexpected shutdown: {:?}", cause),
-            }
-        };
-    }
+            // Args backwards due to needing a TT+
+            ($expect:expr; $($call:tt)+) => {
+                let a = actor!(s, Test::init(), ret_shutdown!(s));
+                call!([a], $($call)+);
+                assert!(matches!(s.shutdown_reason(), None));
+                s.run(now, false);
+                match s.shutdown_reason() {
+                    Some(StopCause::Failed(e)) => assert_eq!($expect, format!("{}", e)),
+                    cause => panic!("Unexpected shutdown: {:?}", cause),
+                }
+            };
+        }
         test_failed!("TEST fail"; do_fail());
         test_failed!("TEST fail_str"; do_fail_str());
         test_failed!("TEST fail_string"; do_fail_string());
@@ -145,17 +146,17 @@ test_fn!(
 
         // Test kill/kill_str/kill_string/kill!
         macro_rules! test_killed {
-        ($expect:expr; $a:ident; $($kill:tt)+) => {
-            let $a = actor!(s, Test::init(), ret_shutdown!(s));
-            $($kill)+;
-            assert!(matches!(s.shutdown_reason(), None));
-            s.run(now, false);
-            match s.shutdown_reason() {
-                Some(StopCause::Killed(e)) => assert_eq!($expect, format!("{}", e)),
-                cause => panic!("Unexpected shutdown: {:?}", cause),
-            }
-        };
-    }
+            ($expect:expr; $a:ident; $($kill:tt)+) => {
+                let $a = actor!(s, Test::init(), ret_shutdown!(s));
+                $($kill)+;
+                assert!(matches!(s.shutdown_reason(), None));
+                s.run(now, false);
+                match s.shutdown_reason() {
+                    Some(StopCause::Killed(e)) => assert_eq!($expect, format!("{}", e)),
+                    cause => panic!("Unexpected shutdown: {:?}", cause),
+                }
+            };
+        }
         test_killed!("TEST kill"; a; a.kill(s, Box::new(StringError("TEST kill".into()))));
         test_killed!("TEST kill_str"; a; a.kill_str(s, "TEST kill_str"));
         test_killed!("TEST kill_string"; a; a.kill_string(s, "TEST kill_string"));
@@ -288,29 +289,29 @@ test_fn!(
         }
 
         macro_rules! expect_fail {
-        ([$($init:tt)+]; $call:ident(); $expect:expr) => {
-            let a = actor!(s, $($init)+, ret_shutdown!(s));
-            call!([a], $call());
-            assert!(matches!(s.shutdown_reason(), None));
-            s.run(now, false);
-            match s.shutdown_reason() {
-                Some(StopCause::Failed(e))  =>  assert_eq!($expect, format!("{}", e)),
-                cause => panic!("Unexpected shutdown: {:?}", cause),
-            }
-        };
-    }
+            ([$($init:tt)+]; $call:ident(); $expect:expr) => {
+                let a = actor!(s, $($init)+, ret_shutdown!(s));
+                call!([a], $call());
+                assert!(matches!(s.shutdown_reason(), None));
+                s.run(now, false);
+                match s.shutdown_reason() {
+                    Some(StopCause::Failed(e))  =>  assert_eq!($expect, format!("{}", e)),
+                    cause => panic!("Unexpected shutdown: {:?}", cause),
+                }
+            };
+        }
         macro_rules! expect_okay {
-        ([$($init:tt)+]; $call:ident()) => {
-            let a = actor!(s, $($init)+, ret_shutdown!(s));
-            call!([a], $call());
-            assert!(matches!(s.shutdown_reason(), None));
-            s.run(now, false);
-            assert!(matches!(s.shutdown_reason(), None));
-            drop(a);
-            s.run(now, false);
-            assert!(matches!(s.shutdown_reason(), Some(StopCause::Dropped)));
-        };
-    }
+            ([$($init:tt)+]; $call:ident()) => {
+                let a = actor!(s, $($init)+, ret_shutdown!(s));
+                call!([a], $call());
+                assert!(matches!(s.shutdown_reason(), None));
+                s.run(now, false);
+                assert!(matches!(s.shutdown_reason(), None));
+                drop(a);
+                s.run(now, false);
+                assert!(matches!(s.shutdown_reason(), Some(StopCause::Dropped)));
+            };
+        }
 
         // ret_fail! should fail A however B terminates
         expect_fail!([A::init0()]; stop_b(); "Test fail 0");

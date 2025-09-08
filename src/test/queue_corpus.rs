@@ -1,5 +1,5 @@
+use crate::time::Instant;
 use crate::*;
-use std::time::Instant;
 
 // This uses a snapshot of a small fuzzing corpus that gives full
 // coverage of queue operations in `cargo fuzz`

@@ -1,5 +1,5 @@
+use crate::time::Instant;
 use crate::*;
-use std::time::Instant;
 
 test_fn!(
     fn share() {

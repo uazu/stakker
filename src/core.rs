@@ -2,6 +2,7 @@ use crate::cell::cell::{new_actor_cell_owner, new_share_cell_owner};
 use crate::cell::cell::{ActorCellMaker, ActorCellOwner, ShareCellOwner};
 use crate::queue::FnOnceQueue;
 use crate::sync::waker::WakeHandlers;
+use crate::time::{Instant, SystemTime};
 use crate::timers::Timers;
 use crate::{
     Deferrer, FixedTimerKey, LogFilter, LogID, LogLevel, LogRecord, LogVisitor, MaxTimerKey,
@@ -12,7 +13,7 @@ use std::collections::{HashMap, VecDeque};
 use std::fmt::Arguments;
 use std::mem;
 use std::ops::{Deref, DerefMut};
-use std::time::{Duration, Instant, SystemTime};
+use std::time::Duration;
 
 /// The external interface to the actor runtime
 ///

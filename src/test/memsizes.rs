@@ -3,8 +3,8 @@
 //! This test intentionally mem::forgets some allocations in order to
 //! have the allocation size show up in valgrind.
 
+use crate::time::Instant;
 use crate::{actor_new, ret_nop, ret_panic, ret_to, ActorOwn, Stakker, StopCause, CX};
-use std::time::Instant;
 
 #[allow(dead_code)]
 struct Actor0([u8; 0]);

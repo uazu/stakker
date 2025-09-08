@@ -89,8 +89,8 @@ test_fn!(
 test_fn!(
     #[cfg(feature = "logger")]
     fn logger() {
+        use crate::time::Instant;
         use std::fmt::Arguments;
-        use std::time::Instant;
 
         let now = Instant::now();
         let mut stakker = Stakker::new(now);

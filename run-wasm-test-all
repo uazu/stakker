@@ -1,0 +1,60 @@
+#!/bin/bash
+
+die() { echo "ABORT: $*"; exit 1; }
+
+[ -d tmp ] && die "tmp/ already exists"
+
+# Copy whole crate to tmp/ and modify it in place to test with
+# `wasm_bindgen_test` instead of `cargo test`.  Install `wasm-pack`
+# using `cargo install wasm-pack`
+
+mkdir tmp &&
+    cp -ra src Cargo.toml Cargo.lock tmp/ &&
+    cd tmp || die "Failed copying crate"
+
+echo "[dev-dependencies]" >>Cargo.toml
+echo "wasm-bindgen-test = \"0.3.0\"" >>Cargo.toml
+
+find -name "*.rs" |
+    while read xx
+    do
+        perl -i -pe 's/#\[test\]/#[wasm_bindgen_test]/g;' $xx
+        grep -E 'wasm_bindgen_test|test_fn!' $xx >&/dev/null && {
+            perl -g -i -pe '
+                 # Insert `use` for `wasm_bindgen_test`
+                 s/(mod tests \{\s*)use/${1}use wasm_bindgen_test::*;\nuse/s ||
+                 s/(\n|^)use/${1}use wasm_bindgen_test::*;\nuse/s;
+
+                 # Cannot test panics, so cut those tests out
+                 s/ #\[should_panic\](.*?{)(.*?)(})/$1$3/sg;
+                 ' $xx
+        }
+    done
+
+# Threads tests won't pass on WASM, so cut them out
+rm src/test/thread.rs
+touch src/test/thread.rs
+
+# Ignore some warnings caused by the testing modifications
+perl -g -i -pe '
+     s/^/#![allow(unused_imports)]\n/s;
+     s/^/#![allow(dead_code)]\n/s;
+' src/lib.rs
+
+../run-feature-combinations | while read FEATURES
+do
+    echo === $FEATURES
+    case $FEATURES in
+        *multi-*)
+            wasm-pack test --node $FEATURES || exit 1
+            ;;
+        *)
+            echo "SKIPPING: not supported on this platform"
+            ;;
+    esac
+done
+
+echo SUCCESS
+cd ..
+rm -r tmp
+exit 0

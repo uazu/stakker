@@ -125,13 +125,12 @@ impl WakeHandlers {
     ///
     /// [`Waker`]: ../sync/struct.Waker.html
     pub fn handler_restore(&mut self, bit: u32, cb: BoxFnMutCB) {
-        if mem::replace(
-            self.slab
-                .get_mut(bit as usize)
-                .expect("WakeHandlers slot unexpectedly deleted during handler call"),
-            Some(cb),
-        )
-        .is_some()
+        if self
+            .slab
+            .get_mut(bit as usize)
+            .expect("WakeHandlers slot unexpectedly deleted during handler call")
+            .replace(cb)
+            .is_some()
         {
             panic!(
                 "WakeHandlers slot unexpected occupied by another handler during wake handler call"
@@ -150,10 +149,11 @@ impl WakeHandlers {
         while base == bit {
             // Bit zero in any bitmap is used to signal a drop, so
             // swap it and add another slab entry
-            let somecb = mem::replace(
-                self.slab.get_mut(bit as usize).unwrap(),
-                Some(Box::new(|s, _| s.process_waker_drops())),
-            );
+            let somecb = self
+                .slab
+                .get_mut(bit as usize)
+                .unwrap()
+                .replace(Box::new(|s, _| s.process_waker_drops()));
             let bit2 =
                 u32::try_from(self.slab.insert(somecb)).expect("Exceeded 2^32 Waker instances");
             bit = bit2;

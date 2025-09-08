@@ -1,9 +1,10 @@
 use crate::queue::FnOnceQueue;
+use crate::time::Instant;
 use std::cmp::Ordering;
 use std::collections::btree_map::Entry;
 use std::collections::BTreeMap;
 use std::mem;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 // TODO: Switch to N-ary Heap for storing (WrapTime, slot-index),
 // e.g. Octonary heap, and use slots for normal timers as well as

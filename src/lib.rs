@@ -34,6 +34,7 @@
 //! - [Testing](#testing)
 //! - [Tutorial example](#tutorial-example)
 //! - [Main loop examples](#main-loop-examples)
+//! - [Building for WASM](#building-for-wasm)
 //! - [Why the name **Stakker**?](#why-the-name-stakker)
 //!
 //! See the [Stakker Guide and Design
@@ -436,6 +437,21 @@
 //! is run.
 //!
 //!
+//! # Building for WASM
+//!
+//! Building under WASM is supported provisionally.  Time-related
+//! types are taken from `wasm-time` instead of `std`.  Compile with
+//! the `multi-thread` Cargo feature enabled, or alternatively
+//! `multi-stakker`.  The tests succeed with either of these features.
+//! Default single-blessed-thread mode doesn't work due to missing
+//! support for the necessary operations in `std` when doing
+//! single-thread checks.  Perhaps this will be fixed when WASM gets
+//! threads.  However if you have a significant **Stakker**-based app
+//! running under WASM that would benefit from getting this final
+//! optimization level working then raise an issue and we can discuss
+//! it.
+//!
+//!
 //! # Why the name **Stakker**?
 //!
 //! "Single-threaded actor runtime" &rarr; STACR &rarr; **Stakker**.
@@ -462,8 +478,6 @@
 //! [`fwd!`]: macro.fwd.html
 //! [`ret!`]: macro.ret.html
 
-// Insist on 2018 style
-#![deny(rust_2018_idioms)]
 // No unsafe code is allowed anywhere if no-unsafe is set
 #![cfg_attr(feature = "no-unsafe", forbid(unsafe_code))]
 // To fix these would break the API
@@ -526,6 +540,14 @@ mod timers;
 
 #[cfg(test)]
 mod test;
+
+// Time-handling selection
+#[cfg(not(target_family = "wasm"))]
+#[doc(hidden)]
+pub use std::time;
+#[cfg(target_family = "wasm")]
+#[doc(hidden)]
+pub use web_time as time;
 
 // Ref-counting selections
 #[cfg(not(feature = "no-unsafe"))]

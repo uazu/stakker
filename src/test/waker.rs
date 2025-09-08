@@ -7,13 +7,13 @@
 //! longer test to stress the code multi-threaded for races can be
 //! found under `extra/`.
 
+use crate::time::Instant;
 use crate::*;
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
-use std::time::Instant;
 
 // Test it all in one thread so that we have total control over the
 // order of operations, to exercise many combinations but reliably and

@@ -4,6 +4,15 @@ This project follows Rust semantic versioning.
 
 <!-- see keepachangelog.com for format ideas -->
 
+## 0.2.13 (2025-09-08)
+
+- Fixups for Rust 1.89 clippy recommendations
+
+### Added
+
+- Provisional support for WASM using `wasm-time`
+
+
 ## 0.2.12 (2025-03-11)
 
 - Fixups for Rust 1.85 warnings and clippy recommendations.  In

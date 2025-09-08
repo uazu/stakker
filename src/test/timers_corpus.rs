@@ -1,8 +1,9 @@
+use crate::time::Instant;
 use crate::*;
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::rc::Rc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 // This uses a snapshot of a small fuzzing corpus that gives full
 // coverage of fixed timer addition and execution in `cargo fuzz`

@@ -1,6 +1,6 @@
 [package]
 name = "stakker"
-version = "0.2.12"
+version = "0.2.13"
 authors = ["Jim Peters <jim@uazu.net>"]
 edition = "2021"
 rust-version = "1.63.0"
@@ -23,6 +23,9 @@ maintenance = { status = "actively-developed" }
 static_assertions = "1.0"
 qcell = "0.5"
 slab = "0.4"
+
+[target.'cfg(target_family = "wasm")'.dependencies]
+web-time = "1.1.0"
 
 # For more details on features, see crate docs.  Features are additive
 # in cargo, so summing features must result a less restrictive, more

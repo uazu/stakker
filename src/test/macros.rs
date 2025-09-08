@@ -1,5 +1,6 @@
 //! Test macros
 
+use crate::time::Instant;
 use crate::{
     actor, actor_new, actor_of_trait, after, at, call, fwd, fwd_do, fwd_nop, fwd_panic, fwd_to,
     idle, lazy, ret, ret_do, ret_nop, ret_panic, ret_shutdown, ret_some_do, ret_some_to, ret_to,
@@ -7,7 +8,7 @@ use crate::{
 };
 use std::cell::RefCell;
 use std::rc::Rc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 #[derive(Clone)]
 struct Scores(Rc<RefCell<[u8; 100]>>);

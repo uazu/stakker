@@ -1,6 +1,7 @@
+use crate::time::{Instant, SystemTime};
 use crate::*;
 use std::rc::Rc;
-use std::time::{Duration, Instant, SystemTime};
+use std::time::Duration;
 
 test_fn!(
     fn test_times() {

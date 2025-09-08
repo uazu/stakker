@@ -1,9 +1,9 @@
 use crate::task::*;
+use crate::time::Instant;
 use crate::*;
 use std::cell::RefCell;
 use std::pin::Pin;
 use std::rc::Rc;
-use std::time::Instant;
 
 // This tests the Task mechanism, but without needing async/await
 test_fn!(
