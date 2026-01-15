@@ -46,7 +46,7 @@ do
     echo === $FEATURES
     case $FEATURES in
         *multi-*)
-            wasm-pack test --node $FEATURES || exit 1
+            wasm-pack test --node $FEATURES --lib || exit 1
             ;;
         *)
             echo "SKIPPING: not supported on this platform"

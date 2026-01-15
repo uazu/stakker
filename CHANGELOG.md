@@ -4,6 +4,14 @@ This project follows Rust semantic versioning.
 
 <!-- see keepachangelog.com for format ideas -->
 
+## 0.2.14 (2026-01-14)
+
+- Update docs to reflect corrected I/O main loop.  See `stakker_mio`
+  0.3.0 for more details
+
+- MSRV updated to 1.65 because `once_cell` crate now requires it
+
+
 ## 0.2.13 (2025-09-08)
 
 - Fixups for Rust 1.89 clippy recommendations

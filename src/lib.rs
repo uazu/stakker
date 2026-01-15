@@ -418,23 +418,26 @@
 //!# use stakker::Stakker;
 //!# use std::time::{Duration, Instant};
 //!# struct MioPoll;
-//!# impl MioPoll { fn poll(&self, d: Duration) -> std::io::Result<bool> { Ok(false) } }
+//!# impl MioPoll { fn poll(&self, d: Duration) -> std::io::Result<(bool, bool)> { Ok((false, false)) } }
 //!# fn test(stakker: &mut Stakker, miopoll: &mut MioPoll) -> std::io::Result<()> {
 //! let mut idle_pending = stakker.run(Instant::now(), false);
+//! let mut io_pending = false;
+//! let mut activity;
+//! const MAX_WAIT: Duration = Duration::from_secs(60);
 //! while stakker.not_shutdown() {
-//!     let maxdur = stakker.next_wait_max(Instant::now(), Duration::from_secs(60), idle_pending);
-//!     let activity = miopoll.poll(maxdur)?;
+//!     let maxdur = stakker.next_wait_max(Instant::now(), MAX_WAIT, idle_pending || io_pending);
+//!     (activity, io_pending) = miopoll.poll(maxdur)?;
 //!     idle_pending = stakker.run(Instant::now(), !activity);
 //! }
 //!#     Ok(())
 //!# }
 //! ```
 //!
-//! The way this works is that if there are idle queue items pending,
-//! then `next_wait_max` returns 0s, which means that the `poll` call
-//! only checks for new I/O events without blocking.  If there are no
-//! new events (`activity` is false), then an item from the idle queue
-//! is run.
+//! The way this works is that if there are idle queue items or I/O
+//! events pending, then `next_wait_max` returns 0s, which means that
+//! the `poll` call only checks for new I/O events without sleeping.
+//! If there are no events processed (`activity` is false), then an
+//! item from the idle queue is run.
 //!
 //!
 //! # Building for WASM

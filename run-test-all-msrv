@@ -3,5 +3,5 @@
 ./run-feature-combinations | while read FEATURES
 do
     echo === $FEATURES
-    cargo +1.63 test $FEATURES || exit 1
+    cargo +1.65 test $FEATURES || exit 1
 done

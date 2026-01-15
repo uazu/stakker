@@ -3,5 +3,5 @@
 ./run-feature-combinations | while read FEATURES
 do
     echo === $FEATURES
-    cargo +1.63 clippy $FEATURES
+    cargo +1.65 clippy $FEATURES
 done

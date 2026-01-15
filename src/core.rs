@@ -66,19 +66,14 @@ impl Stakker {
     }
 
     /// Return how long to wait for the next I/O poll.  If there are
-    /// idle items queued (`idle_pending` is true), return 0 seconds,
-    /// which allows the caller to quickly check for more I/O and then
-    /// run the idle queue if there is nothing to do.  If there is a
-    /// timer active, return the time to wait for that timer, limited
-    /// by `maxdur`.  If there is nothing to wait for, just return
-    /// `maxdur`.
-    pub fn next_wait_max(
-        &mut self,
-        now: Instant,
-        maxdur: Duration,
-        idle_pending: bool,
-    ) -> Duration {
-        if idle_pending {
+    /// idle items or I/O events queued (`pending` is true), return 0
+    /// seconds, which allows the caller to quickly check for more I/O
+    /// and then run the waiting items if there is nothing to do.  If
+    /// there is a timer active, return the time to wait for that
+    /// timer, limited by `maxdur`.  If there is nothing to wait for,
+    /// just return `maxdur`.
+    pub fn next_wait_max(&mut self, now: Instant, maxdur: Duration, pending: bool) -> Duration {
+        if pending {
             Duration::from_secs(0)
         } else {
             self.core

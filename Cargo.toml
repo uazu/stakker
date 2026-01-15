@@ -1,9 +1,9 @@
 [package]
 name = "stakker"
-version = "0.2.13"
+version = "0.2.14"
 authors = ["Jim Peters <jim@uazu.net>"]
 edition = "2021"
-rust-version = "1.63.0"
+rust-version = "1.65.0"
 
 description = "A lightweight low-level single-threaded actor runtime"
 license = "MIT/Apache-2.0"
