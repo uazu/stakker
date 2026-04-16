@@ -122,6 +122,7 @@ test_fn!(
         struct CheckVisitor {
             found_num_i64: bool,
             found_failed_null: bool,
+            found_filter: Option<String>,
         }
         impl LogVisitor for CheckVisitor {
             fn kv_u64(&mut self, key: Option<&str>, _val: u64) {
@@ -145,8 +146,12 @@ test_fn!(
             fn kv_str(&mut self, key: Option<&str>, _val: &str) {
                 panic!("unexpected kv_str: {:?}", key);
             }
-            fn kv_fmt(&mut self, key: Option<&str>, _val: &Arguments<'_>) {
-                panic!("unexpected kv_fmt: {:?}", key);
+            fn kv_fmt(&mut self, key: Option<&str>, val: &Arguments<'_>) {
+                if matches!(key, Some("filter")) {
+                    self.found_filter = Some(format!("{}", val));
+                } else {
+                    panic!("unexpected kv_fmt: {:?}", key);
+                }
             }
             fn kv_map(&mut self, key: Option<&str>) {
                 panic!("unexpected kv_map: {:?}", key);
@@ -166,15 +171,16 @@ test_fn!(
         s.set_logger(
             LogFilter::all(&[LogLevel::Warn, LogLevel::Audit, LogLevel::Open]),
             move |core, r| {
-                assert_eq!(r.id, 1);
                 expect += 1;
                 match expect {
                     1 => {
+                        assert_eq!(r.id, 1);
                         assert_eq!(r.level, LogLevel::Open);
                         assert_eq!(r.target, "");
                         assert_eq!(format!("{}", r.fmt), "stakker::test::log::logger::A");
                     }
                     2 => {
+                        assert_eq!(r.id, 1);
                         assert_eq!(r.level, LogLevel::Warn);
                         assert_eq!(r.target, "target");
                         assert_eq!(format!("{}", r.fmt), "Warning");
@@ -183,7 +189,8 @@ test_fn!(
                         assert_eq!(true, visitor.found_num_i64);
                         assert_eq!(false, visitor.found_failed_null);
                     }
-                    _ => {
+                    3 => {
+                        assert_eq!(r.id, 1);
                         assert_eq!(r.level, LogLevel::Close);
                         assert_eq!(r.target, "");
                         assert_eq!(format!("{}", r.fmt), "Called A::fail");
@@ -191,8 +198,21 @@ test_fn!(
                         (r.kvscan)(&mut visitor);
                         assert_eq!(false, visitor.found_num_i64);
                         assert_eq!(true, visitor.found_failed_null);
+                    }
+                    4 => {
+                        // This should come through despite log-level being at WARN
+                        assert_eq!(r.id, 0);
+                        assert_eq!(r.level, LogLevel::Info);
+                        assert_eq!(r.target, "");
+                        assert_eq!(format!("{}", r.fmt), "Logging level changed");
+                        let mut visitor = CheckVisitor::default();
+                        (r.kvscan)(&mut visitor);
+                        assert_eq!(false, visitor.found_num_i64);
+                        assert_eq!(false, visitor.found_failed_null);
+                        assert_eq!(Some("LogFilter(ERROR)".into()), visitor.found_filter);
                         core.shutdown(StopCause::Stopped);
                     }
+                    _ => panic!("Too many log events"),
                 }
             },
         );
@@ -201,6 +221,7 @@ test_fn!(
         call!([a], warn());
         call!([a], fail());
         s.run(now, false);
+        s.set_log_filter(LogFilter::from(LogLevel::Error));
         assert!(matches!(s.shutdown_reason(), Some(StopCause::Stopped)));
     }
 );

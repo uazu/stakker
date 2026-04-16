@@ -73,10 +73,11 @@
 //! references dereference to [`Core`] and can be used wherever a
 //! [`Core`] ref is required.
 //!
-//! [`Share`] allows a mutable structure to be shared safely between
-//! actors, a bit like IPC shared-memory but with guaranteed exclusive
-//! access.  This may be used for efficiency, like shared-memory
-//! buffers are sometimes used between OS processes.
+//! [`Share`] and [`Share2`] allow a mutable structure to be shared
+//! safely between actors, a bit like IPC shared-memory but with
+//! guaranteed exclusive access.  This may be used for efficiency,
+//! like shared-memory buffers are sometimes used between OS
+//! processes.
 //!
 //! [`Deferrer`] allows queuing things to run from `Drop` handlers or
 //! from other places in the main thread without access to [`Core`].
@@ -472,6 +473,7 @@
 //! [`Fwd`]: struct.Fwd.html
 //! [`PipedThread`]: sync/struct.PipedThread.html
 //! [`Ret`]: struct.Ret.html
+//! [`Share2`]: struct.Share2.html
 //! [`Share`]: struct.Share.html
 //! [`Stakker::set_logger`]: struct.Stakker.html#method.set_logger
 //! [`Stakker`]: struct.Stakker.html
@@ -496,6 +498,7 @@ pub use deferrer::Deferrer;
 pub use fwd::Fwd;
 pub use ret::Ret;
 pub use share::{Share, ShareWeak};
+pub use share2::{Share2, Share2Weak};
 pub use timers::{FixedTimerKey, MaxTimerKey, MinTimerKey};
 
 // These are for backwards-compatibility.  They allow the types to
@@ -519,11 +522,13 @@ static_assertions::assert_not_impl_any!(Actor<u8>: Send, Sync, Copy);
 static_assertions::assert_not_impl_any!(task::Task: Send, Sync, Copy);
 static_assertions::assert_not_impl_any!(Deferrer: Send, Sync, Copy);
 static_assertions::assert_not_impl_any!(Share<u8>: Send, Sync, Copy);
+static_assertions::assert_not_impl_any!(Share2<u8>: Send, Sync, Copy);
 static_assertions::assert_not_impl_any!(Fwd<u8>: Send, Sync, Copy);
 static_assertions::assert_not_impl_any!(Waker: Copy, Clone);
 static_assertions::assert_impl_all!(Actor<u8>: Clone);
 static_assertions::assert_impl_all!(Deferrer: Clone);
 static_assertions::assert_impl_all!(Share<u8>: Clone);
+static_assertions::assert_impl_all!(Share2<u8>: Clone);
 static_assertions::assert_impl_all!(Fwd<u8>: Clone);
 static_assertions::assert_impl_all!(Waker: Send, Sync);
 static_assertions::assert_impl_all!(FixedTimerKey: Copy, Clone);
@@ -537,6 +542,7 @@ mod log;
 mod macros;
 mod ret;
 mod share;
+mod share2;
 pub mod sync;
 pub mod task;
 mod timers;

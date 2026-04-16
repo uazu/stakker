@@ -9,6 +9,7 @@ mod macros;
 mod memsizes;
 mod queue_corpus;
 mod share;
+mod share2;
 mod task;
 mod thread;
 mod timers_corpus;

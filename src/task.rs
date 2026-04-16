@@ -51,7 +51,10 @@ impl Task {
     /// woken again.
     pub fn resume(&mut self, s: &mut Stakker) {
         s.deferrer.task_replace(Some(self.clone()));
-        s.actor_owner.rw(&self.rc).as_mut().resume(&mut s.core);
+        s.actor_owner
+            .rw(&self.rc)
+            .as_mut()
+            .resume(&mut s.nexus.core);
         s.deferrer.task_replace(None);
     }
 

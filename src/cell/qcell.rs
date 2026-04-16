@@ -17,3 +17,10 @@ pub(crate) type ShareCellOwner = QCellOwner;
 pub(crate) fn new_share_cell_owner() -> ShareCellOwner {
     QCellOwner::new()
 }
+
+pub(crate) type Share2Cell<T> = QCell<T>;
+pub(crate) type Share2CellOwner = QCellOwner;
+
+pub(crate) fn new_share2_cell_owner() -> Share2CellOwner {
+    QCellOwner::new()
+}

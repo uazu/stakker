@@ -1,5 +1,5 @@
-use crate::cell::cell::{new_actor_cell_owner, new_share_cell_owner};
-use crate::cell::cell::{ActorCellMaker, ActorCellOwner, ShareCellOwner};
+use crate::cell::cell::{new_actor_cell_owner, new_share2_cell_owner, new_share_cell_owner};
+use crate::cell::cell::{ActorCellMaker, ActorCellOwner, Share2CellOwner, ShareCellOwner};
 use crate::queue::FnOnceQueue;
 use crate::sync::waker::WakeHandlers;
 use crate::time::{Instant, SystemTime};
@@ -27,7 +27,9 @@ use std::time::Duration;
 /// [`Core`]: struct.Core.html
 /// [`Stakker`]: struct.Stakker.html
 pub struct Stakker {
-    pub(crate) core: Core,
+    // Stakker/Nexus/Core should all have the same address, if
+    // compiler is using largest-first field ordering algorithm
+    pub(crate) nexus: Nexus,
     pub(crate) actor_owner: ActorCellOwner,
     alt_queues: Option<(FnOnceQueue<Stakker>, FnOnceQueue<Stakker>)>,
     recreate_queues_time: Instant,
@@ -43,8 +45,12 @@ impl Stakker {
         FnOnceQueue::<Stakker>::sanity_check();
         // Do this first to get the uniqueness checks to fail early,
         let (actor_owner, actor_maker) = new_actor_cell_owner();
+        let share2_owner = new_share2_cell_owner();
         Self {
-            core: Core::new(now, actor_maker),
+            nexus: Nexus {
+                core: Core::new(now, actor_maker),
+                share2_owner,
+            },
             actor_owner,
             alt_queues: Some((FnOnceQueue::new(), FnOnceQueue::new())),
             recreate_queues_time: now + Duration::from_secs(60),
@@ -53,14 +59,13 @@ impl Stakker {
 
     /// Return the next timer expiry time, or None
     pub fn next_expiry(&mut self) -> Option<Instant> {
-        self.core.timers.next_expiry()
+        self.timers.next_expiry()
     }
 
     /// Return how long we need to wait for the next timer, or None if
     /// there are no timers to wait for
     pub fn next_wait(&mut self, now: Instant) -> Option<Duration> {
-        self.core
-            .timers
+        self.timers
             .next_expiry()
             .map(|t| t.saturating_duration_since(now))
     }
@@ -76,8 +81,7 @@ impl Stakker {
         if pending {
             Duration::from_secs(0)
         } else {
-            self.core
-                .timers
+            self.timers
                 .next_expiry()
                 .map(|t| t.saturating_duration_since(now).min(maxdur))
                 .unwrap_or(maxdur)
@@ -119,21 +123,21 @@ impl Stakker {
         // Run main queue and timers
         let (mut alt_main, mut alt_lazy) =
             (self.alt_queues.take()).expect("Previous run call must have panicked");
-        self.core.deferrer.swap_queue(&mut alt_main);
-        if now > self.core.now {
-            self.core.now = now;
-            self.core.timers.advance(now, &mut alt_main);
+        self.deferrer.swap_queue(&mut alt_main);
+        if now > self.now {
+            self.now = now;
+            self.timers.advance(now, &mut alt_main);
         }
         alt_main.execute(self);
 
         // Keep running main and lazy queues until exhaustion
         loop {
-            self.core.deferrer.swap_queue(&mut alt_main);
+            self.deferrer.swap_queue(&mut alt_main);
             if !alt_main.is_empty() {
                 alt_main.execute(self);
                 continue;
             }
-            mem::swap(&mut self.core.lazy_queue, &mut alt_lazy);
+            mem::swap(&mut self.lazy_queue, &mut alt_lazy);
             if !alt_lazy.is_empty() {
                 alt_lazy.execute(self);
                 continue;
@@ -145,12 +149,12 @@ impl Stakker {
         // Recreate the queues?  They will all be empty at this point.
         if now > self.recreate_queues_time {
             self.alt_queues = Some((FnOnceQueue::new(), FnOnceQueue::new()));
-            self.core.lazy_queue = FnOnceQueue::new();
-            self.core.deferrer.set_queue(FnOnceQueue::new());
+            self.lazy_queue = FnOnceQueue::new();
+            self.deferrer.set_queue(FnOnceQueue::new());
             self.recreate_queues_time = now + Duration::from_secs(60);
         }
 
-        !self.core.idle_queue.is_empty()
+        !self.idle_queue.is_empty()
     }
 
     /// Set the current `SystemTime`, for use in a virtual time main
@@ -159,7 +163,7 @@ impl Stakker {
     /// provided `SystemTime` instead.
     #[inline]
     pub fn set_systime(&mut self, systime: Option<SystemTime>) {
-        self.core.systime = systime;
+        self.systime = systime;
     }
 
     /// Set the logger and logging level
@@ -206,6 +210,33 @@ impl Stakker {
         }
         #[cfg(not(feature = "logger"))]
         panic!("Enable 'logger' feature before setting a logger");
+    }
+
+    /// Change the logging level without changing the logger
+    ///
+    /// Logs the logging level change at INFO level, even if INFO is
+    /// not enabled.  This is to make sure that level changes are
+    /// transparent to a log observer.
+    #[inline]
+    #[allow(unused_variables)]
+    pub fn set_log_filter(&mut self, filter: LogFilter) {
+        #[cfg(feature = "logger")]
+        {
+            if let Some(mut logger) = self.logger.take() {
+                logger(
+                    self,
+                    &LogRecord {
+                        id: 0,
+                        level: LogLevel::Info,
+                        target: "",
+                        fmt: format_args!("Logging level changed"),
+                        kvscan: &|v| v.kv_fmt(Some("filter"), &format_args!("{}", filter)),
+                    },
+                );
+                self.logger = Some(logger);
+            }
+            self.log_filter = filter;
+        }
     }
 
     /// Used to provide **Stakker** with a means to wake the main
@@ -282,13 +313,13 @@ impl Deref for Stakker {
     type Target = Core;
 
     fn deref(&self) -> &Core {
-        &self.core
+        &self.nexus.core
     }
 }
 
 impl DerefMut for Stakker {
     fn deref_mut(&mut self) -> &mut Core {
-        &mut self.core
+        &mut self.nexus.core
     }
 }
 
@@ -304,13 +335,19 @@ impl Drop for Stakker {
         // avoid the possibility of an infinite loop.
         for _ in 0..99 {
             let mut alt_main = FnOnceQueue::new();
-            self.core.deferrer.swap_queue(&mut alt_main);
+            self.deferrer.swap_queue(&mut alt_main);
             if alt_main.is_empty() {
                 break;
             }
             drop(alt_main);
         }
     }
+}
+
+/// `Core` plus `Share2` owner, for use by `Cx`
+pub(crate) struct Nexus {
+    pub(crate) core: Core,
+    pub(crate) share2_owner: Share2CellOwner,
 }
 
 /// Core operations available from both [`Stakker`] and [`Cx`] objects
@@ -637,6 +674,9 @@ impl Core {
     /// this call, a call to [`Core::anymap_get`] for this type will
     /// panic, and a call to [`Core::anymap_try_get`] will return
     /// `None`.
+    ///
+    /// [`Core::anymap_get`]: struct.Core.html#method.anymap_get
+    /// [`Core::anymap_try_get`]: struct.Core.html#method.anymap_try_get
     #[inline]
     pub fn anymap_unset<T: Clone + 'static>(&mut self) {
         self.anymap.remove(&TypeId::of::<T>());

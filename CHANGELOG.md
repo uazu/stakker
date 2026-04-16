@@ -4,6 +4,18 @@ This project follows Rust semantic versioning.
 
 <!-- see keepachangelog.com for format ideas -->
 
+## 0.2.15 (2026-04-16)
+
+### Added
+
+- `Share2` type, like `Share` but with a different owner which means
+  it's possible to borrow 1-3 `Share2` contents and `Core` at the same
+  time.  This allows shared data structures to do more.
+
+- `Stakker::set_log_filter` for changing log-filter without changing
+  logger
+
+
 ## 0.2.14 (2026-01-14)
 
 - Update docs to reflect corrected I/O main loop.  See `stakker_mio`

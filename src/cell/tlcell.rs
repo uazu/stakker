@@ -24,3 +24,11 @@ pub(crate) type ShareCellOwner = TLCellOwner<ShareMarker>;
 pub(crate) fn new_share_cell_owner() -> ShareCellOwner {
     TLCellOwner::new()
 }
+
+pub(crate) struct Share2Marker;
+pub(crate) type Share2Cell<T> = TLCell<Share2Marker, T>;
+pub(crate) type Share2CellOwner = TLCellOwner<Share2Marker>;
+
+pub(crate) fn new_share2_cell_owner() -> Share2CellOwner {
+    TLCellOwner::new()
+}

@@ -1,6 +1,6 @@
 use crate::queue::FnOnceQueue;
 use crate::rc::ActorRc;
-use crate::{ret, ret_some_do, Core, Deferrer, LogID, Ret, Stakker};
+use crate::{core::Nexus, ret, ret_some_do, Core, Deferrer, LogID, Ret, Share2, Stakker};
 use slab::Slab;
 use std::error::Error;
 use std::fmt;
@@ -411,7 +411,7 @@ impl<A> Actor<A> {
     #[inline]
     pub fn apply_prep(&self, s: &mut Stakker, f: impl FnOnce(&mut Cx<'_, A>) -> Option<A>) {
         if self.rc.is_prep() {
-            let mut cx = Cx::new(&mut s.core, self);
+            let mut cx = Cx::new(&mut s.nexus, self);
             let val = f(&mut cx);
             if let Some(die) = cx.die {
                 self.terminate(s, die);
@@ -429,7 +429,7 @@ impl<A> Actor<A> {
     #[inline]
     pub fn apply(&self, s: &mut Stakker, f: impl FnOnce(&mut A, &mut Cx<'_, A>) + 'static) {
         if let Some(val) = self.rc.borrow_ready(&mut s.actor_owner) {
-            let mut cx = Cx::new(&mut s.core, self);
+            let mut cx = Cx::new(&mut s.nexus, self);
             f(val, &mut cx);
             if let Some(die) = cx.die {
                 self.terminate(s, die);
@@ -452,7 +452,7 @@ impl<A> Actor<A> {
         f: impl FnOnce(&mut A, &mut Cx<'_, A>) -> R,
     ) -> Option<R> {
         if let Some(val) = self.rc.borrow_ready(&mut s.actor_owner) {
-            let mut cx = Cx::new(&mut s.core, self);
+            let mut cx = Cx::new(&mut s.nexus, self);
             let rv = f(val, &mut cx);
             if let Some(die) = cx.die {
                 self.terminate(s, die);
@@ -585,17 +585,17 @@ impl std::fmt::Debug for StopCause {
 /// [`fail!`]: macro.fail.html
 /// [`stop!`]: macro.stop.html
 pub struct Cx<'a, A: 'static> {
-    pub(crate) core: &'a mut Core,
+    pub(crate) nexus: &'a mut Nexus,
     pub(crate) this: &'a Actor<A>,
     pub(crate) die: Option<StopCause>,
 }
 
 impl<'a, A> Cx<'a, A> {
     #[inline]
-    pub(super) fn new(core: &'a mut Core, this: &'a Actor<A>) -> Self {
+    pub(super) fn new(nexus: &'a mut Nexus, this: &'a Actor<A>) -> Self {
         Self {
             this,
-            core,
+            nexus,
             die: None,
         }
     }
@@ -679,6 +679,41 @@ impl<'a, A> Cx<'a, A> {
         }
     }
 
+    /// Borrow two [`Share2`] instances mutably at the same time.
+    /// This will panic if they are the same instance.
+    ///
+    /// [`Share2`]: struct.Share2.html
+    #[inline]
+    pub fn share2_rw2<'b, T, U>(
+        &'b mut self,
+        s1: &'b Share2<T>,
+        s2: &'b Share2<U>,
+    ) -> (&'b mut T, &'b mut U, &'b mut Core)
+    where
+        'a: 'b,
+    {
+        let (b1, b2) = self.nexus.share2_owner.rw2(&s1.rc, &s2.rc);
+        (b1, b2, &mut self.nexus.core)
+    }
+
+    /// Borrow three [`Share2`] instances mutably at the same time.
+    /// This will panic if any two are the same instance.
+    ///
+    /// [`Share2`]: struct.Share2.html
+    #[inline]
+    pub fn share2_rw3<'b, T, U, V>(
+        &'b mut self,
+        s1: &'b Share2<T>,
+        s2: &'b Share2<U>,
+        s3: &'b Share2<V>,
+    ) -> (&'b mut T, &'b mut U, &'b mut V, &'b mut Core)
+    where
+        'a: 'b,
+    {
+        let (b1, b2, b3) = self.nexus.share2_owner.rw3(&s1.rc, &s2.rc, &s3.rc);
+        (b1, b2, b3, &mut self.nexus.core)
+    }
+
     /// Used in macros to get an [`Actor`] reference
     ///
     /// [`Actor`]: struct.Actor.html
@@ -699,13 +734,13 @@ impl<A> Deref for Cx<'_, A> {
     type Target = Core;
 
     fn deref(&self) -> &Core {
-        self.core
+        &self.nexus.core
     }
 }
 
 impl<A> DerefMut for Cx<'_, A> {
     fn deref_mut(&mut self) -> &mut Core {
-        self.core
+        &mut self.nexus.core
     }
 }
 

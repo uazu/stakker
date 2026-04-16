@@ -41,11 +41,14 @@ use std::rc::{Rc, Weak};
 ///
 /// It's not possible to pass a [`Core`] reference to methods on a
 /// [`Share`] item due to borrowing restrictions.  If you need a
-/// [`Core`] reference, then use arguments of "`this: &Share<Self>,
-/// core: &mut Core`" instead of "`&mut self`", and do `self` access
-/// via `this.rw(core)`.  (However if it's getting this complicated,
-/// maybe consider whether the shared data should be made into an
-/// actor instead, or whether some other approach would be better.)
+/// [`Core`] reference, then consider [`Share2`] instead which allows
+/// borrows on the shared data and [`Core`] at the same time.
+/// Alternatively use arguments of "`this: &Share<Self>, core: &mut
+/// Core`" instead of "`&mut self`", and do `self` access via
+/// `this.rw(core)`.  (However when it's getting this complicated,
+/// check the higher-level design to see whether the shared data would
+/// be better in its own actor, or whether some other approach would
+/// be better.)
 ///
 /// By default borrow-checking of access to the contents of the
 /// [`Share`] is handled at compile-time using a `TCell` or `TLCell`
@@ -57,6 +60,7 @@ use std::rc::{Rc, Weak};
 /// [`Core::share_rw2`]: struct.Core.html#method.share_rw2
 /// [`Core::share_rw3`]: struct.Core.html#method.share_rw3
 /// [`Core`]: struct.Core.html
+/// [`Share2`]: struct.Share2.html
 /// [`Share`]: struct.Share.html
 pub struct Share<T> {
     pub(crate) rc: Rc<ShareCell<T>>,
