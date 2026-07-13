@@ -4,6 +4,12 @@ This project follows Rust semantic versioning.
 
 <!-- see keepachangelog.com for format ideas -->
 
+## 0.2.16 (2026-07-13)
+
+- Allow trailing comma in more places in the macros.  This is required
+  because `rustfmt` will occasionally add them.
+
+
 ## 0.2.15 (2026-04-16)
 
 ### Added

@@ -130,7 +130,7 @@ macro_rules! COVERAGE {
 /// [`actor_new!`]: macro.actor_new.html
 #[macro_export]
 macro_rules! actor {
-    ($core:expr, $type:ident :: $init:ident($($x:expr),* $(,)? ), $notify:expr) => {{
+    ($core:expr, $type:ident :: $init:ident($($x:expr),* $(,)? ), $notify:expr $(,)?) => {{
         $crate::COVERAGE!(actor_0);
         let notify = $notify;
         let parid = $core.access_log_id();
@@ -139,7 +139,7 @@ macro_rules! actor {
         $crate::call!([actor], <$type>::$init($($x),*));
         actor
     }};
-    ($core:expr, <$type:ty> :: $init:ident($($x:expr),* $(,)? ), $notify:expr) => {{
+    ($core:expr, <$type:ty> :: $init:ident($($x:expr),* $(,)? ), $notify:expr $(,)?) => {{
         $crate::COVERAGE!(actor_1);
         let notify = $notify;
         let parid = $core.access_log_id();
@@ -177,7 +177,7 @@ macro_rules! actor {
 /// [`actor!`]: macro.actor.html
 #[macro_export]
 macro_rules! actor_new {
-    ($core:expr, $type:ty, $notify:expr) => {{
+    ($core:expr, $type:ty, $notify:expr $(,)?) => {{
         $crate::COVERAGE!(actor_new);
         let notify = $notify;
         let parid = $core.access_log_id();
@@ -257,7 +257,7 @@ macro_rules! actor_new {
 /// [`ActorOwnAnon`]: struct.ActorOwnAnon.html
 #[macro_export]
 macro_rules! actor_of_trait {
-    ($core:expr, $trait:ident, $type:ident :: $init:ident($($x:expr),* $(,)? ), $notify:expr) => {{
+    ($core:expr, $trait:ident, $type:ident :: $init:ident($($x:expr),* $(,)? ), $notify:expr $(,)?) => {{
         $crate::COVERAGE!(actor_2);
         let notify = $notify;
         let parid = $core.access_log_id();
@@ -266,7 +266,7 @@ macro_rules! actor_of_trait {
         $crate::call!([actor], <$type>::$init($($x),*));
         actor
     }};
-    ($core:expr, $trait:ident, <$type:ty> :: $init:ident($($x:expr),* $(,)? ), $notify:expr) => {{
+    ($core:expr, $trait:ident, <$type:ty> :: $init:ident($($x:expr),* $(,)? ), $notify:expr $(,)?) => {{
         $crate::COVERAGE!(actor_3);
         let notify = $notify;
         let parid = $core.access_log_id();
@@ -312,19 +312,19 @@ macro_rules! actor_of_trait {
 /// [`ActorOwn`]: struct.ActorOwn.html
 #[macro_export]
 macro_rules! actor_in_slab {
-    ($self:ident.$children:ident, $cx:expr, $type:ident :: $init:ident($($x:expr),* $(,)? )) => {{
+    ($self:ident.$children:ident, $cx:expr, $type:ident :: $init:ident($($x:expr),* $(,)? ) $(,)?) => {{
         $crate::COVERAGE!(actor_in_slab_0);
         $crate::actor_in_slab!($self.$children, $cx, <$type>::$init($($x),*), $crate::Ret::new(|_| {}))
     }};
-    ($self:ident.$children:ident, $cx:expr, <$type:ty> :: $init:ident($($x:expr),* $(,)? )) => {{
+    ($self:ident.$children:ident, $cx:expr, <$type:ty> :: $init:ident($($x:expr),* $(,)? ) $(,)?) => {{
         $crate::COVERAGE!(actor_in_slab_1);
         $crate::actor_in_slab!($self.$children, $cx, <$type>::$init($($x),*), $crate::Ret::new(|_| {}))
     }};
-    ($self:ident.$children:ident, $cx:expr, $type:ident :: $init:ident($($x:expr),* $(,)? ), $notify:expr) => {{
+    ($self:ident.$children:ident, $cx:expr, $type:ident :: $init:ident($($x:expr),* $(,)? ), $notify:expr $(,)?) => {{
         $crate::COVERAGE!(actor_in_slab_2);
         $crate::actor_in_slab!($self.$children, $cx, <$type>::$init($($x),*), $notify)
     }};
-    ($self:ident.$children:ident, $cx:expr, <$type:ty> :: $init:ident($($x:expr),* $(,)? ), $notify:expr) => {{
+    ($self:ident.$children:ident, $cx:expr, <$type:ty> :: $init:ident($($x:expr),* $(,)? ), $notify:expr $(,)?) => {{
         $crate::COVERAGE!(actor_in_slab_3);
         let notify = $notify;
         let parent = $cx.this().clone();
@@ -829,11 +829,11 @@ macro_rules! timer_min_aux {
 macro_rules! fwd {
     // A single argument isn't passed as a tuple, so has special
     // handling.
-    ([ $fwd:expr ], $arg:expr) => {{
+    ([ $fwd:expr ], $arg:expr $(,)?) => {{
         $crate::COVERAGE!(fwd_0);
         $fwd.fwd($arg);
     }};
-    ([ $fwd:expr ] $(, $arg:expr)*) => {{
+    ([ $fwd:expr ] $(, $arg:expr)* $(,)?) => {{
         $crate::COVERAGE!(fwd_1);
         $fwd.fwd(( $($arg ,)* ));
     }};
@@ -855,11 +855,11 @@ macro_rules! fwd {
 macro_rules! ret {
     // A single argument isn't passed as a tuple, so has special
     // handling.
-    ([ $ret:expr ], $arg:expr) => {{
+    ([ $ret:expr ], $arg:expr $(,)?) => {{
         $crate::COVERAGE!(ret_0);
         $ret.ret($arg);
     }};
-    ([ $ret:expr ] $(, $arg:expr)*) => {{
+    ([ $ret:expr ] $(, $arg:expr)* $(,)?) => {{
         $crate::COVERAGE!(ret_1);
         $ret.ret(( $($arg ,)* ));
     }};
@@ -870,26 +870,26 @@ macro_rules! ret {
 #[macro_export]
 macro_rules! generic_fwd {
     // Calling actors
-    ($handler:ident; [$actor:expr], $method:ident ( $($x:expr),* ) as ( $($t:ty),* )) => {{
+    ($handler:ident; [$actor:expr], $method:ident ( $($x:expr),* ) as ( $($t:ty),* $(,)? )) => {{
         $crate::COVERAGE!(generic_fwd_0);
         let actor = $actor.access_actor().clone();  // Expecting Actor or Cx ref
         let _args = ( $($x,)* );
         $crate::indices!([$(($x))*] [$(($t))*] generic_fwd_ready $handler actor _args ($($t,)*) $method)
     }};
-    ($handler:ident; [$actor:expr], $type:ident::$method:ident ( $($x:expr),* ) as ( $($t:ty),* )) => {{
+    ($handler:ident; [$actor:expr], $type:ident::$method:ident ( $($x:expr),* ) as ( $($t:ty),* $(,)? )) => {{
         $crate::COVERAGE!(generic_fwd_1);
         let actor = $actor.access_actor().clone();  // Expecting Actor or Cx ref
         let _args = ( $($x,)* );
         $crate::indices!([$(($x))*] [$(($t))*] generic_fwd_prep $handler actor _args ($($t,)*) <$type> $method)
     }};
-    ($handler:ident; [$actor:expr], <$type:ty>::$method:ident ( $($x:expr),* ) as ( $($t:ty),* )) => {{
+    ($handler:ident; [$actor:expr], <$type:ty>::$method:ident ( $($x:expr),* ) as ( $($t:ty),* $(,)? )) => {{
         $crate::COVERAGE!(generic_fwd_2);
         let actor = $actor.access_actor().clone();  // Expecting Actor or Cx ref
         let _args = ( $($x,)* );
         $crate::indices!([$(($x))*] [$(($t))*] generic_fwd_prep $handler actor _args ($($t,)*) <$type> $method)
     }};
     // Calling closures
-    ($handler:ident; [$cx:expr], |$this:pat_param, $cxid:pat_param, $arg:ident : $t:ty| $($body:tt)+) => {{
+    ($handler:ident; [$cx:expr], |$this:pat_param, $cxid:pat_param, $arg:ident : $t:ty $(,)?| $($body:tt)+) => {{
         $crate::COVERAGE!(generic_fwd_3);
         let cx: &mut $crate::Cx<'_, _> = $cx;  // Expecting Cx ref
         let actor = cx.this().clone();
@@ -897,7 +897,7 @@ macro_rules! generic_fwd {
                            move |$this, $cxid, $arg: $t| $($body)*;
                            std::compile_error!("`ret_to!` with a closure requires a single Option argument"))
     }};
-    ($handler:ident; [$cx:expr], |$this:pat_param, $cxid:pat_param $(, $arg:ident : $t:ty)*| $($body:tt)+) => {{
+    ($handler:ident; [$cx:expr], |$this:pat_param, $cxid:pat_param $(, $arg:ident : $t:ty)* $(,)?| $($body:tt)+) => {{
         $crate::COVERAGE!(generic_fwd_4);
         let cx: &mut $crate::Cx<'_, _> = $cx;  // Expecting Cx ref
         let actor = cx.this().clone();
@@ -1347,7 +1347,7 @@ macro_rules! ret_fail {
         let actor = cx.this().clone();
         $crate::Ret::to_actor(actor, move |_, cx, _| cx.fail_str($msg))
     }};
-    ($cx:expr, $fmt:literal $(, $arg:expr)*) => {{
+    ($cx:expr, $fmt:literal $(, $arg:expr)* $(,)?) => {{
         $crate::COVERAGE!(ret_fail_1);
         let message = format!($fmt $(, $arg)*);
         let cx: &mut $crate::Cx<'_, _> = $cx;
@@ -1414,7 +1414,7 @@ macro_rules! ret_failthru {
             }
         })
     }};
-    ($cx:expr, $fmt:literal $(, $arg:expr)*) => {{
+    ($cx:expr, $fmt:literal $(, $arg:expr)* $(,)?) => {{
         $crate::COVERAGE!(ret_failthru_1);
         let message = format!($fmt $(, $arg)*);
         let cx: &mut $crate::Cx<'_, _> = $cx;
@@ -1467,7 +1467,7 @@ macro_rules! fail {
         $crate::COVERAGE!(fail_0);
         $cx.fail_str($msg);
     }};
-    ($cx:expr, $fmt:literal $(, $arg:expr)*) => {{
+    ($cx:expr, $fmt:literal $(, $arg:expr)* $(,)?) => {{
         $crate::COVERAGE!(fail_1);
         $cx.fail_string(format!($fmt $(, $arg)*));
     }};
@@ -1532,7 +1532,7 @@ macro_rules! kill {
         let actor: $crate::ActorOwn<_> = $actor.owned();
         $actor.defer(move |s| actor.kill_str(s, $msg));
     }};
-    ($actor:expr, $fmt:literal $(, $arg:expr)*) => {{
+    ($actor:expr, $fmt:literal $(, $arg:expr)* $(,)?) => {{
         $crate::COVERAGE!(kill_1);
         let actor: $crate::ActorOwn<_> = $actor.owned();
         let msg = format!($fmt $(, $arg)*);
